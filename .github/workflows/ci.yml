@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Formatting is a property of the source, not of the platform, so it is
+  # checked once rather than three times.
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should not hide what the other two would have
+      # said: a linking problem on Windows tells you nothing about Linux.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu
+            os: ubuntu-latest
+            artifact: linux-x86_64
+            binary: generic-accounting-system
+          # macos-14 and later are Apple silicon, which is what `macos-latest`
+          # now points at.
+          - name: macOS (Apple silicon)
+            os: macos-latest
+            artifact: macos-aarch64
+            binary: generic-accounting-system
+          - name: Windows
+            os: windows-latest
+            artifact: windows-x86_64
+            binary: generic-accounting-system.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.artifact }}
+
+      # The other two platforms bring their own. On Linux: ALSA for the sound
+      # effects, OpenSSL for the MariaDB TLS option, and the X11/Wayland and
+      # keyboard libraries the window itself needs.
+      - name: Install build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libasound2-dev \
+            libssl-dev \
+            libwayland-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev
+
+      # `-D warnings` is passed to clippy rather than set in RUSTFLAGS so that
+      # a warning in a dependency cannot fail this build.
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      # No display and no audio device on the runners, which is exactly what
+      # the tests are written to survive: none of them open a window or a sound
+      # card.
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --locked --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generic-accounting-system-${{ matrix.artifact }}
+          path: target/release/${{ matrix.binary }}
+          if-no-files-found: error

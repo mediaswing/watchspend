@@ -55,9 +55,9 @@ impl MariaDbSettings {
             return Err(Error::Rejected("Enter the user name.".to_owned()));
         }
 
-        let ssl = self.use_tls.then(|| {
-            SslOpts::default().with_danger_skip_domain_validation(self.tls_skip_verify)
-        });
+        let ssl = self
+            .use_tls
+            .then(|| SslOpts::default().with_danger_skip_domain_validation(self.tls_skip_verify));
 
         Ok(OptsBuilder::new()
             .ip_or_hostname(Some(self.host.trim()))
@@ -128,11 +128,7 @@ impl MariaDbStore {
 }
 
 impl Store for MariaDbStore {
-    fn categories_with_totals(
-        &mut self,
-        year: i32,
-        currency: &str,
-    ) -> Result<Vec<CategoryTotal>> {
+    fn categories_with_totals(&mut self, year: i32, currency: &str) -> Result<Vec<CategoryTotal>> {
         self.conn
             .exec_map(
                 "SELECT c.name,
@@ -210,7 +206,15 @@ impl Store for MariaDbStore {
 /// only date this app sends is a plain calendar day, so pass it as one.
 fn as_mysql_date(date: NaiveDate) -> mysql::Value {
     use chrono::Datelike as _;
-    mysql::Value::Date(date.year() as u16, date.month() as u8, date.day() as u8, 0, 0, 0, 0)
+    mysql::Value::Date(
+        date.year() as u16,
+        date.month() as u8,
+        date.day() as u8,
+        0,
+        0,
+        0,
+        0,
+    )
 }
 
 fn backend(e: mysql::Error) -> Error {
@@ -262,6 +266,10 @@ mod tests {
         };
         assert!(!settings.use_tls);
         assert!(!settings.tls_skip_verify);
-        assert!(mysql::Opts::from(settings.opts().unwrap()).get_ssl_opts().is_none());
+        assert!(
+            mysql::Opts::from(settings.opts().unwrap())
+                .get_ssl_opts()
+                .is_none()
+        );
     }
 }

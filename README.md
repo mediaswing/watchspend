@@ -1,5 +1,7 @@
 # Generic Accounting System
 
+[![CI](https://github.com/mediaswing/watchspend/actions/workflows/ci.yml/badge.svg)](https://github.com/mediaswing/watchspend/actions/workflows/ci.yml)
+
 A small graphical budgeting app: put your spending into categories, and see
 what each category has cost you so far this year. Written in Rust, with
 [egui](https://github.com/emilk/egui) for the interface.
@@ -94,6 +96,21 @@ formatting and parsing (including that `1,50` means different amounts in
 different places, and that a date is never quietly reinterpreted), the SQLite
 queries behind the totals, the MariaDB settings that are checked before any
 connection is attempted, and that both sound files still decode.
+
+## Building elsewhere
+
+Every push is built and tested on Ubuntu, Apple silicon macOS and Windows by
+[the CI workflow](.github/workflows/ci.yml), which leaves a release binary for
+each as a downloadable artifact.
+
+On Linux the window, the sound and the MariaDB TLS option need a few
+development packages that the other two platforms already have:
+
+```sh
+sudo apt-get install libasound2-dev libssl-dev libwayland-dev \
+  libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+  libxkbcommon-dev libxkbcommon-x11-dev
+```
 
 ## Licence
 

@@ -52,8 +52,7 @@ impl std::error::Error for Error {}
 pub trait Store: Send {
     /// Every category, with the total spent in it during `year`, in the given
     /// currency. Categories with nothing in them yet come back with a zero.
-    fn categories_with_totals(&mut self, year: i32, currency: &str)
-    -> Result<Vec<CategoryTotal>>;
+    fn categories_with_totals(&mut self, year: i32, currency: &str) -> Result<Vec<CategoryTotal>>;
 
     /// Entries in `year` that are in some *other* currency, and so are not
     /// part of the totals above. Non-zero only if the machine's locale has

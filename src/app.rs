@@ -272,11 +272,23 @@ fn install_fonts_and_style(ctx: &egui::Context) {
     // is set to.
     ctx.all_styles_mut(|style| {
         style.text_styles = [
-            (TextStyle::Heading, FontId::new(24.0, FontFamily::Proportional)),
+            (
+                TextStyle::Heading,
+                FontId::new(24.0, FontFamily::Proportional),
+            ),
             (TextStyle::Body, FontId::new(15.0, FontFamily::Proportional)),
-            (TextStyle::Button, FontId::new(15.0, FontFamily::Proportional)),
-            (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
-            (TextStyle::Monospace, FontId::new(14.0, FontFamily::Monospace)),
+            (
+                TextStyle::Button,
+                FontId::new(15.0, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Small,
+                FontId::new(12.0, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Monospace,
+                FontId::new(14.0, FontFamily::Monospace),
+            ),
         ]
         .into();
         style.spacing.item_spacing = egui::vec2(8.0, 8.0);

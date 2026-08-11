@@ -62,11 +62,7 @@ impl SqliteStore {
 }
 
 impl Store for SqliteStore {
-    fn categories_with_totals(
-        &mut self,
-        year: i32,
-        currency: &str,
-    ) -> Result<Vec<CategoryTotal>> {
+    fn categories_with_totals(&mut self, year: i32, currency: &str) -> Result<Vec<CategoryTotal>> {
         let mut stmt = self
             .conn
             .prepare(
@@ -85,7 +81,11 @@ impl Store for SqliteStore {
 
         let rows = stmt
             .query_map(
-                params![currency, format!("{year:04}-01-01"), format!("{year:04}-12-31")],
+                params![
+                    currency,
+                    format!("{year:04}-01-01"),
+                    format!("{year:04}-12-31")
+                ],
                 |row| {
                     Ok(CategoryTotal {
                         name: row.get(0)?,
@@ -104,7 +104,11 @@ impl Store for SqliteStore {
             .query_row(
                 "SELECT COUNT(*) FROM spending
                   WHERE currency <> ?1 AND spent_on >= ?2 AND spent_on <= ?3",
-                params![currency, format!("{year:04}-01-01"), format!("{year:04}-12-31")],
+                params![
+                    currency,
+                    format!("{year:04}-01-01"),
+                    format!("{year:04}-12-31")
+                ],
                 |row| row.get(0),
             )
             .map_err(backend)
@@ -181,9 +185,12 @@ mod tests {
     fn totals_cover_the_year_and_nothing_else() {
         let mut s = store();
         s.add_category("Groceries").unwrap();
-        s.add_spend(&spend("Groceries", 1000, (2026, 1, 1))).unwrap();
-        s.add_spend(&spend("Groceries", 250, (2026, 12, 31))).unwrap();
-        s.add_spend(&spend("Groceries", 9999, (2025, 12, 31))).unwrap();
+        s.add_spend(&spend("Groceries", 1000, (2026, 1, 1)))
+            .unwrap();
+        s.add_spend(&spend("Groceries", 250, (2026, 12, 31)))
+            .unwrap();
+        s.add_spend(&spend("Groceries", 9999, (2025, 12, 31)))
+            .unwrap();
 
         let totals = s.categories_with_totals(2026, "GBP").unwrap();
         assert_eq!(totals.len(), 1);
@@ -217,7 +224,10 @@ mod tests {
         euro.currency = "EUR".to_owned();
         s.add_spend(&euro).unwrap();
 
-        assert_eq!(s.categories_with_totals(2026, "GBP").unwrap()[0].total_minor, 500);
+        assert_eq!(
+            s.categories_with_totals(2026, "GBP").unwrap()[0].total_minor,
+            500
+        );
         assert_eq!(s.entries_in_other_currencies(2026, "GBP").unwrap(), 1);
     }
 

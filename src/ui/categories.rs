@@ -62,7 +62,11 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 ui.label(
                     RichText::new(format!(
                         "{foreign} {} recorded in another currency and not counted here.",
-                        if foreign == 1 { "entry was" } else { "entries were" }
+                        if foreign == 1 {
+                            "entry was"
+                        } else {
+                            "entries were"
+                        }
                     ))
                     .size(12.0)
                     .weak(),

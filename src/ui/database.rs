@@ -116,9 +116,12 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         apply_clicked = ui::wide_button(ui, "Use This Database").clicked();
         ui.add_space(10.0);
         ui.label(
-            RichText::new(format!("Settings are kept in {}", config::tilde(&config::config_path())))
-                .size(12.0)
-                .weak(),
+            RichText::new(format!(
+                "Settings are kept in {}",
+                config::tilde(&config::config_path())
+            ))
+            .size(12.0)
+            .weak(),
         );
     });
 
@@ -207,9 +210,8 @@ fn apply(app: &mut App) {
             // the app working on whatever it was using before.
             app.store = Some(store);
             app.config.backend = backend;
-            app.config.sqlite_path = Some(std::path::PathBuf::from(
-                app.database.sqlite_path.trim(),
-            ));
+            app.config.sqlite_path =
+                Some(std::path::PathBuf::from(app.database.sqlite_path.trim()));
             app.config.mariadb = app.database.mariadb.clone();
             app.config.mariadb.port = port_of(app).unwrap_or(app.config.mariadb.port);
             app.config.remember_password = app.database.remember_password;

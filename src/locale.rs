@@ -360,7 +360,11 @@ impl Locale {
         if self.currency.decimals == 0 {
             "0".to_owned()
         } else {
-            format!("0{}{}", self.decimal_sep, "0".repeat(self.currency.decimals as usize))
+            format!(
+                "0{}{}",
+                self.decimal_sep,
+                "0".repeat(self.currency.decimals as usize)
+            )
         }
     }
 
@@ -492,7 +496,10 @@ impl Locale {
         // not, and neither is anyone's budget. Bound it to four-digit years so
         // a typo is caught here rather than by the database, or worse, stored.
         if !(1000..=9999).contains(&y) {
-            return Err(format!("That year looks wrong. Enter the date as {}.", self.date_hint()));
+            return Err(format!(
+                "That year looks wrong. Enter the date as {}.",
+                self.date_hint()
+            ));
         }
 
         NaiveDate::from_ymd_opt(y, m as u32, d as u32)

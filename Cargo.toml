@@ -1,6 +1,6 @@
 [package]
 name = "generic-accounting-system"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "A graphical budgeting app: categories, spending, and a choice of database"
 license = "GPL-3.0-or-later"

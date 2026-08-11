@@ -1,0 +1,148 @@
+name: Release
+
+# Pushing a version tag cuts the release. Nothing here runs on an ordinary
+# push, so the tag is the deliberate act, and the tag is what gets built —
+# never a later commit that happened to land while this was running.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu
+            os: ubuntu-latest
+            target: linux-x86_64
+            binary: generic-accounting-system
+          - name: macOS (Apple silicon)
+            os: macos-latest
+            target: macos-aarch64
+            binary: generic-accounting-system
+          - name: Windows
+            os: windows-latest
+            target: windows-x86_64
+            binary: generic-accounting-system.exe
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libasound2-dev \
+            libssl-dev \
+            libwayland-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev
+
+      # The tests ran on this commit in CI, but a release is worth the two
+      # minutes: a binary nobody tested is not a release, it is a guess.
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --locked --release
+
+      # The licence travels with the binary, as the GPL asks, and the README
+      # says where the source it was built from lives.
+      - name: Package (tar.gz)
+        if: runner.os != 'Windows'
+        run: |
+          name="generic-accounting-system-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir "$name"
+          cp "target/release/${{ matrix.binary }}" LICENSE README.md "$name/"
+          tar czf "$name.tar.gz" "$name"
+
+      - name: Package (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "generic-accounting-system-$env:GITHUB_REF_NAME-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $name | Out-Null
+          Copy-Item "target/release/${{ matrix.binary }}", LICENSE, README.md $name
+          Compress-Archive -Path $name -DestinationPath "$name.zip"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.target }}
+          path: |
+            *.tar.gz
+            *.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      # The only job that needs to write anything, and the only one that does.
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: packages
+
+      # Anyone who cares can check what they downloaded is what was built.
+      - name: Checksums
+        working-directory: packages
+        run: sha256sum * | tee SHA256SUMS
+
+      - name: Publish the release
+        working-directory: packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'NOTES'
+          A graphical budgeting app: put your spending into categories, and see
+          what each has cost you so far this year. Money and dates follow your
+          system locale throughout.
+
+          | Download | For |
+          | --- | --- |
+          | `…-linux-x86_64.tar.gz` | Linux on x86-64 |
+          | `…-macos-aarch64.tar.gz` | macOS on Apple silicon |
+          | `…-windows-x86_64.zip` | Windows on x86-64 |
+
+          Each archive holds the binary, the licence and the README.
+          `SHA256SUMS` covers all three.
+
+          These binaries are not code-signed. macOS will quarantine a
+          downloaded one; clear it with
+          `xattr -d com.apple.quarantine generic-accounting-system`, or build
+          from source with `cargo build --release`.
+
+          Free software under the GNU General Public License, version 3 or
+          later. The source this was built from is the tag itself.
+          NOTES
+
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Generic Accounting System $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --verify-tag \
+            ./*.tar.gz ./*.zip SHA256SUMS

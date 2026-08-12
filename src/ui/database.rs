@@ -5,8 +5,8 @@ use egui::{RichText, Ui};
 use crate::app::App;
 use crate::config::{self, Backend, Config};
 use crate::db::Store;
-use crate::db::mariadb::{MariaDbSettings, MariaDbStore};
-use crate::db::sqlite::SqliteStore;
+use crate::db::attempt::{Attempt, Purpose, Target};
+use crate::db::mariadb::MariaDbSettings;
 use crate::ui;
 
 pub struct State {
@@ -16,6 +16,9 @@ pub struct State {
     pub mariadb: MariaDbSettings,
     pub port: String,
     pub remember_password: bool,
+    /// What went wrong with the last attempt, kept beside the fields it is
+    /// about rather than only in the status bar.
+    pub error: Option<String>,
 }
 
 impl State {
@@ -26,6 +29,7 @@ impl State {
             mariadb: config.mariadb.clone(),
             port: config.mariadb.port.to_string(),
             remember_password: config.remember_password,
+            error: None,
         }
     }
 }
@@ -39,6 +43,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
 
     let mut test_clicked = false;
     let mut apply_clicked = false;
+    let connecting = app.is_connecting();
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         let state = &mut app.database;
@@ -108,12 +113,35 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     .weak(),
                 );
                 ui.add_space(10.0);
-                test_clicked = ui::wide_button(ui, "Test Connection").clicked();
+                test_clicked = ui
+                    .add_enabled_ui(!connecting, |ui| ui::wide_button(ui, "Test Connection"))
+                    .inner
+                    .clicked();
             }
         }
 
         ui.add_space(10.0);
-        apply_clicked = ui::wide_button(ui, "Use This Database").clicked();
+        // Both buttons go quiet while an attempt is in flight, so a slow
+        // server cannot be asked the same question five times over.
+        apply_clicked = ui
+            .add_enabled_ui(!connecting, |ui| {
+                ui::wide_button(
+                    ui,
+                    if connecting {
+                        "Connecting…"
+                    } else {
+                        "Use This Database"
+                    },
+                )
+            })
+            .inner
+            .clicked();
+
+        if let Some(error) = &app.database.error {
+            ui.add_space(6.0);
+            ui::error_text(ui, error);
+        }
+
         ui.add_space(10.0);
         ui.label(
             RichText::new(format!(
@@ -126,10 +154,10 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     });
 
     if test_clicked {
-        test_connection(app);
+        begin(app, Purpose::Test);
     }
     if apply_clicked {
-        apply(app);
+        begin(app, Purpose::Adopt);
     }
 }
 
@@ -159,75 +187,92 @@ fn port_of(app: &App) -> Result<u16, String> {
         .map_err(|_| "The port has to be a number between 1 and 65535.".to_owned())
 }
 
-/// Open the chosen backend and prove it is usable before anyone relies on it.
-///
-/// Connecting only shows that the login worked. It says nothing about whether
-/// this account can read the tables it just created, and finding that out
-/// after the switch means finding it out from an app that has already put its
-/// old, working database down. So the connection is made, read from, and only
-/// then handed back to be adopted.
-fn open_and_check(app: &App) -> Result<Box<dyn Store>, String> {
-    let mut store: Box<dyn Store> = match app.database.backend {
-        Backend::Sqlite => {
-            let path = std::path::PathBuf::from(app.database.sqlite_path.trim());
-            if path.as_os_str().is_empty() {
-                return Err("Give the database file a path.".to_owned());
-            }
-            Box::new(SqliteStore::open(&path).map_err(|e| e.to_string())?)
-        }
+/// What the user has asked for, as something that can be opened.
+fn target_of(app: &App) -> Result<Target, String> {
+    match app.database.backend {
+        Backend::Sqlite => Ok(Target::Sqlite(std::path::PathBuf::from(
+            app.database.sqlite_path.trim(),
+        ))),
         Backend::MariaDb => {
             let mut settings = app.database.mariadb.clone();
             settings.port = port_of(app)?;
-            Box::new(MariaDbStore::connect(&settings).map_err(|e| e.to_string())?)
+            Ok(Target::MariaDb(settings))
+        }
+    }
+}
+
+/// Start opening a database, for testing or for keeps.
+///
+/// Nothing waits here: the attempt goes to its own thread and the answer is
+/// picked up by [`connection_finished`] a frame or two later, which is what
+/// keeps a wrong hostname from freezing the window for five seconds.
+fn begin(app: &mut App, purpose: Purpose) {
+    if app.is_connecting() {
+        return;
+    }
+    match target_of(app) {
+        Ok(target) => {
+            app.status = Some(crate::app::Status {
+                message: format!("Connecting to {}…", target.label()),
+                good: true,
+            });
+            app.database.error = None;
+            app.connection = Some(app.start_connection(target, purpose));
+        }
+        Err(message) => {
+            app.database.error = Some(message.clone());
+            app.report_error(message);
+        }
+    }
+}
+
+/// Deal with the answer, whichever way it went.
+pub fn connection_finished(
+    app: &mut App,
+    attempt: &Attempt,
+    result: Result<Box<dyn Store>, String>,
+) {
+    let store = match result {
+        Ok(store) => store,
+        Err(reason) => {
+            // Which database failed, as well as how: by the time the answer
+            // comes back the user may have typed a different hostname into
+            // the fields, and the message should still be about the attempt
+            // that was actually made.
+            let message = format!("{} — {reason}", attempt.target.label());
+            app.database.error = Some(message.clone());
+            app.report_error(message);
+            // Nothing to fall back on means the app has no database at all,
+            // and this pane is where that gets fixed.
+            if app.store.is_none() && attempt.purpose == Purpose::Adopt {
+                app.tab = crate::app::Tab::Database;
+            }
+            return;
         }
     };
 
-    store
-        .categories_with_totals(app.year, app.locale.currency.code)
-        .map_err(|err| format!("Connected, but could not read from it: {err}"))?;
+    app.database.error = None;
 
-    Ok(store)
-}
-
-/// The Test Connection button: everything `open_and_check` does, but the
-/// result is only reported, and the app carries on where it was.
-fn test_connection(app: &mut App) {
-    match open_and_check(app) {
-        Ok(store) => {
-            let where_it_is = store.describe();
-            app.report_ok(format!("{where_it_is} — connected, and readable."));
-        }
-        Err(message) => app.report_error(message),
+    if attempt.purpose == Purpose::Test {
+        // Tested and thrown away: the app carries on with whatever it had.
+        return app.report_ok(format!("{} — connected, and readable.", store.describe()));
     }
-}
 
-/// Switch the app over to the chosen backend, and remember the choice.
-fn apply(app: &mut App) {
-    let backend = app.database.backend;
-    match open_and_check(app) {
-        Ok(store) => {
-            // Only now is the old connection let go: a failed switch leaves
-            // the app working on whatever it was using before.
-            app.store = Some(store);
-            app.config.backend = backend;
-            app.config.sqlite_path =
-                Some(std::path::PathBuf::from(app.database.sqlite_path.trim()));
-            app.config.mariadb = app.database.mariadb.clone();
-            app.config.mariadb.port = port_of(app).unwrap_or(app.config.mariadb.port);
-            app.config.remember_password = app.database.remember_password;
+    // Only now is the old connection let go: a failed attempt leaves the app
+    // working on whatever it was using before.
+    let where_it_is = store.describe();
+    app.store = Some(store);
+    app.config.backend = app.database.backend;
+    app.config.sqlite_path = Some(std::path::PathBuf::from(app.database.sqlite_path.trim()));
+    app.config.mariadb = app.database.mariadb.clone();
+    app.config.mariadb.port = port_of(app).unwrap_or(app.config.mariadb.port);
+    app.config.remember_password = app.database.remember_password;
 
-            let where_it_is = app
-                .store
-                .as_ref()
-                .map_or_else(String::new, |s| s.describe());
-            if let Err(err) = app.config.save() {
-                app.report_error(format!("Connected, but could not save the setting: {err}"));
-            } else {
-                app.report_ok(format!("Now using {where_it_is}"));
-            }
-            app.reload_totals();
-            app.spending.category = None;
-        }
-        Err(message) => app.report_error(message),
+    if let Err(err) = app.config.save() {
+        app.report_error(format!("Connected, but could not save the setting: {err}"));
+    } else {
+        app.report_ok(format!("Now using {where_it_is}"));
     }
+    app.reload_totals();
+    app.spending.category = None;
 }

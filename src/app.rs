@@ -7,8 +7,7 @@ use egui::{Align, FontFamily, FontId, Layout, RichText, TextStyle};
 
 use crate::audio::Sounds;
 use crate::config::{Backend, Config};
-use crate::db::mariadb::MariaDbStore;
-use crate::db::sqlite::SqliteStore;
+use crate::db::attempt::{Attempt, Purpose, Target};
 use crate::db::{CategoryTotal, Store};
 use crate::locale::Locale;
 use crate::ui;
@@ -74,6 +73,8 @@ pub struct App {
     /// not already waved this version away.
     pub update: Option<Update>,
     update_check: update::Check,
+    /// A database being opened on another thread.
+    pub connection: Option<Attempt>,
 }
 
 impl App {
@@ -99,6 +100,7 @@ impl App {
             reports: ui::reports::State::new(year),
             database,
             update: None,
+            connection: None,
             update_check: if config.check_for_updates {
                 update::Check::start()
             } else {
@@ -108,35 +110,59 @@ impl App {
             data_version: 0,
         };
 
-        match app.open_configured_store() {
-            Ok(store) => {
-                app.store = Some(store);
-                app.reload_totals();
-            }
-            Err(message) => {
-                // Starting with no database is survivable: the Database tab is
-                // exactly where you would go to fix it.
-                app.tab = Tab::Database;
-                app.status = Some(Status {
-                    message,
-                    good: false,
-                });
-            }
-        }
+        app.open_configured_store();
         app.spending.reset_date(&app.locale);
         app
     }
 
     /// Open whichever backend the saved configuration names.
-    fn open_configured_store(&self) -> Result<Box<dyn Store>, String> {
-        match self.config.backend {
-            Backend::Sqlite => SqliteStore::open(&self.config.sqlite_path())
-                .map(|s| Box::new(s) as Box<dyn Store>)
-                .map_err(|e| e.to_string()),
-            Backend::MariaDb => MariaDbStore::connect(&self.config.mariadb)
-                .map(|s| Box::new(s) as Box<dyn Store>)
-                .map_err(|e| e.to_string()),
+    ///
+    /// A local file is opened here and now. A server is opened on another
+    /// thread, because a machine that is asleep, renamed or simply not there
+    /// would otherwise hold up the window for the length of the timeout — and
+    /// the first thing anyone would want to do about that is reach for the
+    /// Database tab, which they cannot do while it is frozen.
+    fn open_configured_store(&mut self) {
+        let target = match self.config.backend {
+            Backend::Sqlite => Target::Sqlite(self.config.sqlite_path()),
+            Backend::MariaDb => Target::MariaDb(self.config.mariadb.clone()),
+        };
+
+        if target.is_slow() {
+            self.status = Some(Status {
+                message: format!("Connecting to {}…", target.label()),
+                good: true,
+            });
+            self.connection = Some(self.start_connection(target, Purpose::Adopt));
+            return;
         }
+
+        match target.open_and_check(self.year, self.locale.currency.code) {
+            Ok(store) => {
+                self.store = Some(store);
+                self.reload_totals();
+            }
+            Err(message) => {
+                // Starting with no database is survivable: the Database tab is
+                // exactly where you would go to fix it.
+                self.tab = Tab::Database;
+                self.status = Some(Status {
+                    message,
+                    good: false,
+                });
+            }
+        }
+    }
+
+    /// Begin opening a database in the background.
+    pub fn start_connection(&self, target: Target, purpose: Purpose) -> Attempt {
+        Attempt::start(target, purpose, self.year, self.locale.currency.code)
+    }
+
+    /// Is a connection being opened right now? The Database tab uses this to
+    /// keep anyone from starting a second one on top of the first.
+    pub fn is_connecting(&self) -> bool {
+        self.connection.is_some()
     }
 
     /// Re-read the category totals from the database.
@@ -268,6 +294,21 @@ impl eframe::App for App {
             && self.config.dismissed_update.as_deref() != Some(found.version.as_str())
         {
             self.update = Some(found);
+        }
+
+        if let Some(attempt) = self.connection.as_mut()
+            && let Some(result) = attempt.poll()
+        {
+            let attempt = self.connection.take().expect("just polled it");
+            ui::database::connection_finished(self, &attempt, result);
+        }
+
+        // egui only draws when something happens, and a background thread
+        // finishing is not something it counts. Without this, an answer can
+        // sit in its channel until the user happens to move the mouse.
+        if self.connection.is_some() || self.update_check.is_running() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
         }
 
         egui::Panel::left("tabs")

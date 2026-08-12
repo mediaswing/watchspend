@@ -19,30 +19,44 @@ const GAIN: f32 = 0.7;
 
 pub struct Sounds {
     /// Holds the audio device open; playback stops when this is dropped.
+    ///
+    /// Opened when there is first something to play, not at startup. Holding
+    /// an output stream open keeps the audio hardware awake and puts the app
+    /// in the list of things using it, which is a strange thing for a
+    /// budgeting app to do all afternoon on the off chance of a click.
     device: Option<MixerDeviceSink>,
+    /// Whether opening it has already been tried and failed, so a machine with
+    /// no sound card is not asked about it once per button press.
+    unavailable: bool,
 }
 
 impl Sounds {
     pub fn new() -> Self {
-        let device = match DeviceSinkBuilder::open_default_sink() {
-            Ok(device) => Some(device),
-            Err(err) => {
-                log::warn!("no audio output, carrying on in silence: {err}");
-                None
-            }
-        };
-        Self { device }
+        Self {
+            device: None,
+            unavailable: false,
+        }
     }
 
-    pub fn success(&self) {
+    pub fn success(&mut self) {
         self.play(SUCCESS_WAV);
     }
 
-    pub fn failure(&self) {
+    pub fn failure(&mut self) {
         self.play(ERROR_WAV);
     }
 
-    fn play(&self, wav: &'static [u8]) {
+    fn play(&mut self, wav: &'static [u8]) {
+        if self.device.is_none() && !self.unavailable {
+            match DeviceSinkBuilder::open_default_sink() {
+                Ok(device) => self.device = Some(device),
+                Err(err) => {
+                    log::warn!("no audio output, carrying on in silence: {err}");
+                    self.unavailable = true;
+                }
+            }
+        }
+
         let Some(device) = &self.device else {
             return;
         };

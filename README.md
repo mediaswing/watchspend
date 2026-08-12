@@ -88,6 +88,13 @@ password, optionally turn on TLS, and use **Test Connection** before
 committing to it. The two tables are created on first connection, so the user
 needs `CREATE` as well as `SELECT` and `INSERT`.
 
+Connecting happens on a background thread, so a server that is asleep or
+misspelled costs you a message rather than a frozen window, and the app keeps
+whatever database it already had. Reads and writes during a session are still
+made on the main thread: against a local file that is imperceptible, but a
+network that stalls mid-query can still pause the window until the fifteen
+second timeout.
+
 The choice is remembered in `config.json` next to the default database file.
 The MariaDB password is only written there if you tick the box that says so —
 that file is plain text, kept readable by you alone, and no more secure than

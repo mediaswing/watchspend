@@ -70,6 +70,12 @@ impl Check {
         Self { receiver: None }
     }
 
+    /// Is the check still out? Used to keep the window repainting until the
+    /// answer is in, since nothing else would wake it.
+    pub fn is_running(&self) -> bool {
+        self.receiver.is_some()
+    }
+
     /// The answer, once, if it has arrived.
     pub fn poll(&mut self) -> Option<Update> {
         let receiver = self.receiver.as_ref()?;

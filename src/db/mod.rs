@@ -3,6 +3,7 @@
 //! The app only ever talks to the [`Store`] trait, so the Database tab can
 //! swap the backend underneath it without anything else noticing.
 
+pub mod attempt;
 pub mod mariadb;
 pub mod sqlite;
 

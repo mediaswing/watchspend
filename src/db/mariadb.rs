@@ -248,8 +248,18 @@ fn as_mysql_date(date: NaiveDate) -> mysql::Value {
     )
 }
 
+/// Turn a driver error into something worth putting in front of a person.
+///
+/// `mysql::Error`'s own `Display` wraps the useful part in the name of the
+/// variant holding it — `DriverError { Could not connect: connection timeout }`
+/// — which tells the reader about the crate rather than about their server.
 fn backend(e: mysql::Error) -> Error {
-    Error::Backend(e.to_string())
+    Error::Backend(match e {
+        mysql::Error::DriverError(inner) => inner.to_string(),
+        mysql::Error::MySqlError(inner) => inner.message,
+        mysql::Error::IoError(inner) => inner.to_string(),
+        other => other.to_string(),
+    })
 }
 
 #[cfg(test)]

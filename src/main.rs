@@ -21,7 +21,9 @@ mod audio;
 mod config;
 mod db;
 mod locale;
+mod report;
 mod ui;
+mod update;
 
 /// The name shown in the title bar, and the one the README uses.
 pub const APP_NAME: &str = "Generic Accounting System";

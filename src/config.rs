@@ -14,7 +14,7 @@ pub enum Backend {
     MariaDb,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub backend: Backend,
@@ -25,6 +25,33 @@ pub struct Config {
     /// default: the file is plain text, and saying so is better than a
     /// surprise.
     pub remember_password: bool,
+    /// Whether to ask GitHub at startup if there is a newer release.
+    ///
+    /// On by default, off in one click, and worth being explicit about: it is
+    /// the only thing this app does over the network unasked, and it tells
+    /// GitHub someone is running it.
+    #[serde(default = "yes")]
+    pub check_for_updates: bool,
+    /// A version the user has already been told about and did not want.
+    pub dismissed_update: Option<String>,
+}
+
+/// `serde`'s default for a `bool` is `false`, and this one is `true`.
+fn yes() -> bool {
+    true
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            backend: Backend::default(),
+            sqlite_path: None,
+            mariadb: MariaDbSettings::default(),
+            remember_password: false,
+            check_for_updates: true,
+            dismissed_update: None,
+        }
+    }
 }
 
 impl Config {

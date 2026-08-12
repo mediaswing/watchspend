@@ -7,7 +7,7 @@ use mysql::prelude::Queryable as _;
 use mysql::{Conn, OptsBuilder, SslOpts, params};
 use serde::{Deserialize, Serialize};
 
-use super::{CategoryTotal, Error, NewSpend, Result, Store, clean_category_name};
+use super::{CategoryTotal, Error, NewSpend, Result, SpendEntry, Store, clean_category_name};
 
 /// How long to wait on a server that is not answering. Short enough that a
 /// wrong hostname is a mistake you notice, rather than a frozen window.
@@ -161,6 +161,37 @@ impl Store for MariaDbStore {
             )
             .map_err(backend)?;
         Ok(count.unwrap_or(0))
+    }
+
+    fn spending_in_year(&mut self, year: i32, currency: &str) -> Result<Vec<SpendEntry>> {
+        // The date comes back formatted rather than as a `DATE`, so that both
+        // backends hand this code the same thing: `chrono` support is an
+        // optional feature of the MySQL driver and not one worth taking on for
+        // a single column.
+        let rows: Vec<(String, String, i64, String)> = self
+            .conn
+            .exec(
+                "SELECT DATE_FORMAT(s.spent_on, '%Y-%m-%d'), c.name, s.amount_minor, s.description
+                   FROM spending s
+                   JOIN categories c ON c.id = s.category_id
+                  WHERE s.currency = :currency AND YEAR(s.spent_on) = :year
+                  ORDER BY s.spent_on, c.name, s.id",
+                params! { "currency" => currency, "year" => year },
+            )
+            .map_err(backend)?;
+
+        rows.into_iter()
+            .map(|(date, category, amount_minor, description)| {
+                Ok(SpendEntry {
+                    spent_on: chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(
+                        |_| Error::Backend(format!("A stored date is not a date: {date:?}")),
+                    )?,
+                    category,
+                    amount_minor,
+                    description,
+                })
+            })
+            .collect()
     }
 
     fn add_category(&mut self, name: &str) -> Result<()> {

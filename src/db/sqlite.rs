@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension as _, params};
 
-use super::{CategoryTotal, Error, NewSpend, Result, Store, clean_category_name};
+use super::{CategoryTotal, Error, NewSpend, Result, SpendEntry, Store, clean_category_name};
 
 pub struct SqliteStore {
     conn: Connection,
@@ -114,6 +114,46 @@ impl Store for SqliteStore {
             .map_err(backend)
     }
 
+    fn spending_in_year(&mut self, year: i32, currency: &str) -> Result<Vec<SpendEntry>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT s.spent_on, c.name, s.amount_minor, s.description
+                   FROM spending s
+                   JOIN categories c ON c.id = s.category_id
+                  WHERE s.currency = ?1
+                    AND s.spent_on >= ?2 AND s.spent_on <= ?3
+                  ORDER BY s.spent_on, c.name COLLATE NOCASE, s.id",
+            )
+            .map_err(backend)?;
+
+        let rows = stmt
+            .query_map(
+                params![
+                    currency,
+                    format!("{year:04}-01-01"),
+                    format!("{year:04}-12-31")
+                ],
+                |row| {
+                    let date: String = row.get(0)?;
+                    Ok((date, row.get(1)?, row.get(2)?, row.get(3)?))
+                },
+            )
+            .map_err(backend)?;
+
+        let mut entries = Vec::new();
+        for row in rows {
+            let (date, category, amount_minor, description) = row.map_err(backend)?;
+            entries.push(SpendEntry {
+                spent_on: parse_stored_date(&date)?,
+                category,
+                amount_minor,
+                description,
+            });
+        }
+        Ok(entries)
+    }
+
     fn add_category(&mut self, name: &str) -> Result<()> {
         let name = clean_category_name(name)?;
         if self.category_id(&name)?.is_some() {
@@ -152,6 +192,13 @@ impl Store for SqliteStore {
 
 fn backend(e: rusqlite::Error) -> Error {
     Error::Backend(e.to_string())
+}
+
+/// SQLite has no date type, so dates are kept as `YYYY-MM-DD` text. Anything
+/// else in that column was not put there by this app.
+fn parse_stored_date(text: &str) -> Result<chrono::NaiveDate> {
+    chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
+        .map_err(|_| Error::Backend(format!("A stored date is not a date: {text:?}")))
 }
 
 #[cfg(test)]

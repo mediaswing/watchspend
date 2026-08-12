@@ -2,8 +2,9 @@
 
 [![CI](https://github.com/mediaswing/watchspend/actions/workflows/ci.yml/badge.svg)](https://github.com/mediaswing/watchspend/actions/workflows/ci.yml)
 
-A small graphical budgeting app: put your spending into categories, and see
-what each category has cost you so far this year. Written in Rust, with
+A small graphical budgeting app: put your spending into categories, see what
+each has cost you so far this year, and write the year out as a report you can
+keep, send or print. Written in Rust, with
 [egui](https://github.com/emilk/egui) for the interface.
 
 Everything you read or type — the currency symbol, where it sits, how digits
@@ -22,7 +23,7 @@ file under your data directory and starts with no categories in it.
 
 ## The window
 
-Three tabs run down the left-hand side, and the pane on the right shows the one
+Four tabs run down the left-hand side, and the pane on the right shows the one
 you have picked.
 
 **Categories** lists every category with the total spent in it this calendar
@@ -36,10 +37,37 @@ on today), the category, the amount, and an optional description. Nothing is
 recorded until every field makes sense, and if something does not, the form
 says what and why.
 
+**Reports** writes a year out as a file: pick the year, pick the format, choose
+whether to include the month-by-month table and the itemised entries, and save.
+
 **Database** chooses where all of this is kept — see below.
 
 Every action either works or does not, and says so twice: a message along the
 bottom of the window, and one of two sounds.
+
+## Reports
+
+| Format | What it is for |
+| --- | --- |
+| CSV | A spreadsheet. Amounts are plain numbers it can total, the delimiter follows your locale, and the file carries a byte order mark so Excel shows `£` rather than `Â£`. |
+| Word | A `.docx` with the tables laid out for reading, headers that repeat across pages, and A4 page setup. |
+| HTML | One self-contained page — no scripts, nothing to fetch — which is also how you get a PDF: open it and print. |
+| JSON | The figures as data. Amounts appear as integer minor units as well as formatted strings, and dates are ISO whatever your locale shows. |
+
+Every format is built from one reading of the year's entries, so two of them
+made a second apart cannot disagree. Text you typed is escaped on the way into
+the markup formats, and anything a spreadsheet would treat as a formula is
+defused on the way into CSV.
+
+## Update checks
+
+At startup the app asks GitHub whether there is a newer release. If there is,
+it says so once and offers to open the release page. It downloads nothing,
+installs nothing and runs nothing — everything past that point is your doing.
+
+Dismissing a version means never being asked about that one again, and the
+check can be turned off entirely from the same box. When it is off, or when
+there is no network, the app says nothing at all.
 
 ## Where the data is kept
 
@@ -85,6 +113,15 @@ If you move a database between machines with different locales, entries in the
 other currency are counted and mentioned under the table rather than being
 silently added to a total they do not belong in.
 
+## Accessibility
+
+The interface follows the system light or dark theme, and the colours that
+carry meaning are defined for both — a green that reads on white is unreadable
+on charcoal, so each has two. Colour is never the only signal: every message
+says in words what happened. egui exposes the interface through
+[AccessKit](https://accesskit.dev), the window can be zoomed with the usual
+`Ctrl`/`Cmd` and `+`/`-`, and every control can be reached from the keyboard.
+
 ## Tests
 
 ```sh
@@ -94,8 +131,11 @@ cargo test
 The tests cover the places where being wrong would be expensive: locale
 formatting and parsing (including that `1,50` means different amounts in
 different places, and that a date is never quietly reinterpreted), the SQLite
-queries behind the totals, the MariaDB settings that are checked before any
-connection is attempted, and that both sound files still decode.
+queries behind the totals, the MariaDB settings checked before any connection
+is attempted, every report format (that the Word file is a valid package, that
+user text cannot become markup or a spreadsheet formula, that the totals in one
+table match the totals in the next), the version comparison behind the update
+prompt, and that both sound files still decode.
 
 ## Building elsewhere
 

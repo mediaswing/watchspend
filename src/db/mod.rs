@@ -17,6 +17,15 @@ pub struct CategoryTotal {
     pub entries: i64,
 }
 
+/// One recorded entry, as it comes back out for a report.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpendEntry {
+    pub spent_on: NaiveDate,
+    pub category: String,
+    pub amount_minor: i64,
+    pub description: String,
+}
+
 /// One thing the user spent money on.
 #[derive(Clone, Debug)]
 pub struct NewSpend {
@@ -58,6 +67,11 @@ pub trait Store: Send {
     /// part of the totals above. Non-zero only if the machine's locale has
     /// changed since the entries were recorded.
     fn entries_in_other_currencies(&mut self, year: i32, currency: &str) -> Result<i64>;
+
+    /// Every entry in `year` in the given currency, oldest first. This is what
+    /// a report is built from, so it is read once and worked on in memory
+    /// rather than asked for a section at a time.
+    fn spending_in_year(&mut self, year: i32, currency: &str) -> Result<Vec<SpendEntry>>;
 
     fn add_category(&mut self, name: &str) -> Result<()>;
 

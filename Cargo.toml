@@ -2,7 +2,7 @@
 name = "generic-accounting-system"
 version = "1.0.0"
 edition = "2024"
-description = "A graphical budgeting app: categories, spending, and a choice of database"
+description = "A graphical budgeting app: categories, spending, reports in CSV, Word, HTML and JSON, and a choice of SQLite or MariaDB"
 license = "GPL-3.0-or-later"
 
 [dependencies]
@@ -18,6 +18,8 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 mysql = { version = "28", default-features = false, features = ["minimal", "derive", "buffer-pool", "native-tls"] }
 rodio = { version = "0.22", default-features = false, features = ["playback", "wav"] }
 log = "0.4.33"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+ureq = { version = "3.4.0", default-features = false, features = ["native-tls"] }
 
 [profile.release]
 opt-level = 2

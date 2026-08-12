@@ -1,8 +1,10 @@
-//! The three panes, and the few widget helpers they share.
+//! The four panes, and the few widget helpers they share.
 
 pub mod categories;
 pub mod database;
+pub mod reports;
 pub mod spending;
+pub mod update_box;
 
 use egui::{Atom, Color32, Response, RichText, Ui, Widget as _};
 
@@ -51,8 +53,33 @@ pub fn labelled_password(ui: &mut Ui, label: &str, value: &mut String) -> Respon
     response
 }
 
+/// Green for something that worked, dark enough to read on a light background
+/// and light enough to read on a dark one.
+///
+/// The window follows whatever theme the system is set to, so a single colour
+/// cannot serve both: the dark greens and reds that look right on white fall
+/// to around 2.5:1 against a dark background, which is below any reasonable
+/// contrast floor and unreadable for some people outright.
+pub fn good_colour(ui: &Ui) -> Color32 {
+    if ui.visuals().dark_mode {
+        Color32::from_rgb(0x81, 0xc9, 0x84)
+    } else {
+        Color32::from_rgb(0x1b, 0x5e, 0x20)
+    }
+}
+
+/// Red for something that did not, chosen the same way.
+pub fn bad_colour(ui: &Ui) -> Color32 {
+    if ui.visuals().dark_mode {
+        Color32::from_rgb(0xff, 0x8a, 0x80)
+    } else {
+        Color32::from_rgb(0xb7, 0x1c, 0x1c)
+    }
+}
+
 pub fn error_text(ui: &mut Ui, message: &str) {
-    ui.label(RichText::new(message).color(Color32::from_rgb(0xc6, 0x28, 0x28)));
+    let colour = bad_colour(ui);
+    ui.label(RichText::new(message).color(colour));
 }
 
 /// A pane heading with a quieter line of context under it.

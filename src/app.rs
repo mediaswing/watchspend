@@ -3,7 +3,7 @@
 
 use chrono::{Datelike as _, Local};
 use eframe::CreationContext;
-use egui::{Align, Color32, FontFamily, FontId, Layout, RichText, TextStyle};
+use egui::{Align, FontFamily, FontId, Layout, RichText, TextStyle};
 
 use crate::audio::Sounds;
 use crate::config::{Backend, Config};
@@ -12,6 +12,7 @@ use crate::db::sqlite::SqliteStore;
 use crate::db::{CategoryTotal, Store};
 use crate::locale::Locale;
 use crate::ui;
+use crate::update::{self, Update};
 
 /// The bold face the whole interface is set in.
 const UBUNTU_BOLD: &[u8] = include_bytes!("../assets/fonts/Ubuntu-Bold.ttf");
@@ -20,16 +21,23 @@ const UBUNTU_BOLD: &[u8] = include_bytes!("../assets/fonts/Ubuntu-Bold.ttf");
 pub enum Tab {
     Categories,
     Spending,
+    Reports,
     Database,
 }
 
 impl Tab {
-    const ALL: [Self; 3] = [Self::Categories, Self::Spending, Self::Database];
+    const ALL: [Self; 4] = [
+        Self::Categories,
+        Self::Spending,
+        Self::Reports,
+        Self::Database,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
             Self::Categories => "Categories",
             Self::Spending => "Spending",
+            Self::Reports => "Reports",
             Self::Database => "Database",
         }
     }
@@ -57,7 +65,15 @@ pub struct App {
     pub status: Option<Status>,
     pub categories: ui::categories::State,
     pub spending: ui::spending::State,
+    pub reports: ui::reports::State,
     pub database: ui::database::State,
+    /// Bumped whenever anything is written, so panes that cache what they
+    /// have read know when to read it again.
+    pub data_version: u64,
+    /// A newer release, once the startup check has found one and the user has
+    /// not already waved this version away.
+    pub update: Option<Update>,
+    update_check: update::Check,
 }
 
 impl App {
@@ -68,19 +84,28 @@ impl App {
         let locale = Locale::detect();
         let database = ui::database::State::from_config(&config);
 
+        let year = Local::now().year();
         let mut app = Self {
             locale,
             sounds: Sounds::new(),
             store: None,
             tab: Tab::Categories,
-            year: Local::now().year(),
+            year,
             totals: Vec::new(),
             foreign_entries: 0,
             status: None,
             categories: ui::categories::State::default(),
             spending: ui::spending::State::default(),
+            reports: ui::reports::State::new(year),
             database,
+            update: None,
+            update_check: if config.check_for_updates {
+                update::Check::start()
+            } else {
+                update::Check::disabled()
+            },
             config,
+            data_version: 0,
         };
 
         match app.open_configured_store() {
@@ -115,7 +140,11 @@ impl App {
     }
 
     /// Re-read the category totals from the database.
+    ///
+    /// Called after every write, so it is also where the rest of the app is
+    /// told that what it has read is now out of date.
     pub fn reload_totals(&mut self) {
+        self.data_version = self.data_version.wrapping_add(1);
         let year = self.year;
         let currency = self.locale.currency.code;
         let Some(store) = self.store.as_mut() else {
@@ -210,9 +239,9 @@ impl App {
             |ui| {
                 if let Some(status) = &self.status {
                     let colour = if status.good {
-                        Color32::from_rgb(0x2e, 0x7d, 0x32)
+                        ui::good_colour(ui)
                     } else {
-                        Color32::from_rgb(0xc6, 0x28, 0x28)
+                        ui::bad_colour(ui)
                     };
                     ui.label(RichText::new(&status.message).size(12.0).color(colour));
                 }
@@ -232,6 +261,15 @@ impl eframe::App for App {
             self.reload_totals();
         }
 
+        // The check runs on its own thread; this is where its answer, if it
+        // ever comes, is picked up. A version already dismissed is dropped
+        // here rather than shown and closed again.
+        if let Some(found) = self.update_check.poll()
+            && self.config.dismissed_update.as_deref() != Some(found.version.as_str())
+        {
+            self.update = Some(found);
+        }
+
         egui::Panel::left("tabs")
             .resizable(false)
             .exact_size(190.0)
@@ -242,8 +280,11 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ui, |ui| match self.tab {
             Tab::Categories => ui::categories::show(self, ui),
             Tab::Spending => ui::spending::show(self, ui),
+            Tab::Reports => ui::reports::show(self, ui),
             Tab::Database => ui::database::show(self, ui),
         });
+
+        ui::update_box::show(self, &ui.ctx().clone());
     }
 }
 

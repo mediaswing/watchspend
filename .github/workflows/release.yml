@@ -141,8 +141,22 @@ jobs:
           later. The source this was built from is the tag itself.
           NOTES
 
-          gh release create "$GITHUB_REF_NAME" \
-            --title "Generic Accounting System $GITHUB_REF_NAME" \
-            --notes-file notes.md \
-            --verify-tag \
-            ./*.tar.gz ./*.zip SHA256SUMS
+          # Publishing the same tag twice is a normal thing to want: a tag
+          # moved to fix something, or a run restarted after a hiccup on one
+          # platform. Creating fails once a release exists, so an existing one
+          # is updated in place instead — same URL, same page, new files.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME exists; replacing its files."
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "Generic Accounting System $GITHUB_REF_NAME" \
+              --notes-file notes.md
+            gh release upload "$GITHUB_REF_NAME" \
+              --clobber \
+              ./*.tar.gz ./*.zip SHA256SUMS
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "Generic Accounting System $GITHUB_REF_NAME" \
+              --notes-file notes.md \
+              --verify-tag \
+              ./*.tar.gz ./*.zip SHA256SUMS
+          fi

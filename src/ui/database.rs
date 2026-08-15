@@ -22,6 +22,9 @@ pub struct State {
     /// What went wrong with the last attempt, kept beside the fields it is
     /// about rather than only in the status bar.
     pub error: Option<String>,
+    /// A SQLite file that is not there yet, waiting to be confirmed before it
+    /// is brought into being. See [`begin`].
+    confirm_create: Option<(std::path::PathBuf, Purpose)>,
 }
 
 impl State {
@@ -35,6 +38,7 @@ impl State {
             mssql_port: config.mssql.port.to_string(),
             remember_password: config.remember_password,
             error: None,
+            confirm_create: None,
         }
     }
 }
@@ -110,6 +114,12 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         &mut state.mariadb.tls_skip_verify,
                         "Accept a certificate that does not match the host name",
                     );
+                    ui::labelled_field(
+                        ui,
+                        "CA certificate file (optional)",
+                        &mut state.mariadb.ca_cert_path,
+                        "for a server certificate issued by your own authority",
+                    );
                 }
                 ui.checkbox(
                     &mut state.remember_password,
@@ -138,12 +148,16 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 ui::labelled_password(ui, "Password", &mut state.mssql.password);
 
                 ui.checkbox(&mut state.mssql.use_tls, "Encrypt the connection");
-                if state.mssql.use_tls {
-                    ui.checkbox(
-                        &mut state.mssql.tls_skip_verify,
-                        "Accept a certificate that does not match the host name",
-                    );
-                }
+                // Not tucked away under "Encrypt the connection" the way the
+                // MariaDB one is: SQL Server encrypts the login whatever this
+                // box says, so its certificate is checked either way, and a
+                // stock install presents one this machine has no reason to
+                // trust. Hiding the way past that behind a checkbox the user
+                // deliberately left clear makes the server unreachable.
+                ui.checkbox(
+                    &mut state.mssql.tls_skip_verify,
+                    "Accept any certificate this server offers",
+                );
                 ui.checkbox(
                     &mut state.remember_password,
                     "Remember the password (stored as plain text in the config file)",
@@ -205,6 +219,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     if apply_clicked {
         begin(app, Purpose::Adopt);
     }
+
+    let ctx = ui.ctx().clone();
+    create_confirm(app, &ctx);
 }
 
 /// One of the two backend choices, as a wide button that stays lit when it is
@@ -224,6 +241,14 @@ fn choice(ui: &mut Ui, current: &mut Backend, value: Backend, title: &str, detai
     ui.add_space(8.0);
 }
 
+/// The path in the SQLite box, as somewhere on disk. Typing `~/…` into a text
+/// box is the natural thing to do on macOS and Linux, and is what this app
+/// puts on screen itself, so it is understood here rather than taken to mean a
+/// directory called `~`.
+fn sqlite_path_of(app: &App) -> std::path::PathBuf {
+    config::untilde(std::path::Path::new(app.database.sqlite_path.trim()))
+}
+
 /// Read a port out of a text field, since it is the one number here.
 fn parse_port(text: &str) -> Result<u16, String> {
     text.trim()
@@ -234,9 +259,7 @@ fn parse_port(text: &str) -> Result<u16, String> {
 /// What the user has asked for, as something that can be opened.
 fn target_of(app: &App) -> Result<Target, String> {
     match app.database.backend {
-        Backend::Sqlite => Ok(Target::Sqlite(std::path::PathBuf::from(
-            app.database.sqlite_path.trim(),
-        ))),
+        Backend::Sqlite => Ok(Target::Sqlite(sqlite_path_of(app))),
         Backend::MariaDb => {
             let mut settings = app.database.mariadb.clone();
             settings.port = parse_port(&app.database.mariadb_port)?;
@@ -252,27 +275,77 @@ fn target_of(app: &App) -> Result<Target, String> {
 
 /// Start opening a database, for testing or for keeps.
 ///
-/// Nothing waits here: the attempt goes to its own thread and the answer is
-/// picked up by [`connection_finished`] a frame or two later, which is what
-/// keeps a wrong hostname from freezing the window for five seconds.
+/// A SQLite file that is not there yet is created, which is the point when the
+/// backend is new and a disaster when the path simply has a typo in it: the
+/// app cheerfully reports success, and the year's spending appears to have
+/// vanished. Nothing distinguishes the two cases but the user, so they are
+/// asked — once, and only when the file really is absent.
 fn begin(app: &mut App, purpose: Purpose) {
     if app.is_connecting() {
         return;
     }
-    match target_of(app) {
-        Ok(target) => {
-            app.status = Some(crate::app::Status {
-                message: format!("Connecting to {}…", target.label()),
-                good: true,
-            });
-            app.database.error = None;
-            app.connection = Some(app.start_connection(target, purpose));
-        }
+    let target = match target_of(app) {
+        Ok(target) => target,
         Err(message) => {
             app.database.error = Some(message.clone());
             app.report_error(message);
+            return;
         }
+    };
+
+    if let Target::Sqlite(path) = &target
+        && !path.exists()
+    {
+        app.database.confirm_create = Some((path.clone(), purpose));
+        return;
     }
+
+    start(app, target, purpose);
+}
+
+/// Actually dial out.
+///
+/// Nothing waits here: the attempt goes to its own thread and the answer is
+/// picked up by [`connection_finished`] a frame or two later, which is what
+/// keeps a wrong hostname from freezing the window for five seconds.
+fn start(app: &mut App, target: Target, purpose: Purpose) {
+    app.status = Some(crate::app::Status {
+        message: format!("Connecting to {}…", target.label()),
+        good: true,
+    });
+    app.database.error = None;
+    app.connection = Some(app.start_connection(target, purpose));
+}
+
+/// The confirmation an absent SQLite file brings up.
+fn create_confirm(app: &mut App, ctx: &egui::Context) {
+    let Some((path, purpose)) = app.database.confirm_create.clone() else {
+        return;
+    };
+
+    let mut open = true;
+    let confirmed = ui::confirm_modal(
+        ctx,
+        egui::Id::new("create-database"),
+        &mut open,
+        "Create a New Database?",
+        &format!(
+            "There is no file at {}. Starting a new, empty database there is \
+             fine if that is what you meant — but if you were opening one you \
+             already have, check the path for a typo first: your existing \
+             spending is wherever that file really is, untouched.",
+            config::tilde(&path)
+        ),
+        "Create It",
+    );
+    if !open {
+        app.database.confirm_create = None;
+    }
+    if !confirmed {
+        return;
+    }
+
+    start(app, Target::Sqlite(path), purpose);
 }
 
 /// Deal with the answer, whichever way it went.
@@ -312,7 +385,8 @@ pub fn connection_finished(
     let where_it_is = store.describe();
     app.store = Some(store);
     app.config.backend = app.database.backend;
-    app.config.sqlite_path = Some(std::path::PathBuf::from(app.database.sqlite_path.trim()));
+    let chosen_path = sqlite_path_of(app);
+    app.config.sqlite_path = Some(chosen_path);
     app.config.mariadb = app.database.mariadb.clone();
     app.config.mariadb.port =
         parse_port(&app.database.mariadb_port).unwrap_or(app.config.mariadb.port);

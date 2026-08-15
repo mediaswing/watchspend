@@ -108,13 +108,12 @@ fn look_for_newer(current: &str) -> Option<Update> {
             "generic-accounting-system/",
             env!("CARGO_PKG_VERSION")
         ))
-        // The platform's own TLS, which the MariaDB connection already uses.
-        // Carrying a second TLS stack in one small app would mean two sets of
-        // root certificates to keep straight and two sets of advisories to
-        // follow.
+        // rustls, which the database connections use too. Carrying a second
+        // TLS stack in one small app would mean two sets of root certificates
+        // to keep straight and two sets of advisories to follow.
         .tls_config(
             ureq::tls::TlsConfig::builder()
-                .provider(ureq::tls::TlsProvider::NativeTls)
+                .provider(ureq::tls::TlsProvider::Rustls)
                 .build(),
         )
         .build()
@@ -255,5 +254,24 @@ mod tests {
     #[test]
     fn this_build_knows_its_own_version() {
         assert!(parts(CURRENT).is_some(), "CARGO_PKG_VERSION is {CURRENT}");
+    }
+
+    /// Not run as part of the normal suite: it reaches out to GitHub, and the
+    /// CI runners are not the place to depend on that. It is here because the
+    /// TLS stack picks its cryptography once, at run time, and getting that
+    /// wrong is a panic on the first HTTPS request rather than a build error —
+    /// which nothing else in this suite would notice.
+    ///
+    /// `cargo test --bin generic-accounting-system \
+    ///     update::tests::really_reaches_github -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn really_reaches_github() {
+        // Deliberately absurd, so a real release always looks newer and the
+        // parsing is exercised too rather than stopping at "nothing to do".
+        match look_for_newer("0.0.1") {
+            Some(update) => println!("reached GitHub; latest is {}", update.version),
+            None => println!("reached GitHub; no release looked newer than 0.0.1"),
+        }
     }
 }

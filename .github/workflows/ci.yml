@@ -61,15 +61,15 @@ jobs:
           key: ${{ matrix.artifact }}
 
       # The other two platforms bring their own. On Linux: ALSA for the sound
-      # effects, OpenSSL for the MariaDB and SQL Server TLS options, and the
-      # X11/Wayland and keyboard libraries the window itself needs.
+      # effects, and the X11/Wayland and keyboard libraries the window itself
+      # needs. TLS is rustls, compiled in, so there is no OpenSSL to install
+      # here and none to find on the machine that runs the result.
       - name: Install build dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
             libasound2-dev \
-            libssl-dev \
             libwayland-dev \
             libxcb-render0-dev \
             libxcb-shape0-dev \

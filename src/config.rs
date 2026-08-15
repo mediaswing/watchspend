@@ -114,7 +114,9 @@ impl Config {
 
     /// The SQLite file to use: whatever the user set, or the default.
     pub fn sqlite_path(&self) -> PathBuf {
-        self.sqlite_path.clone().unwrap_or_else(default_sqlite_path)
+        self.sqlite_path
+            .as_deref()
+            .map_or_else(default_sqlite_path, untilde)
     }
 }
 
@@ -141,5 +143,55 @@ pub fn tilde(path: &Path) -> String {
     match dirs::home_dir().and_then(|home| path.strip_prefix(home).ok().map(Path::to_path_buf)) {
         Some(rest) => format!("~/{}", rest.display()),
         None => path.display().to_string(),
+    }
+}
+
+/// The other direction: turn a leading `~` back into the home directory.
+///
+/// A text box has no shell behind it to do this, so without it `~/accounts.db`
+/// means a directory actually named `~`, created wherever the app happens to
+/// have been started from — which for a windowed app is `/` on macOS and the
+/// home directory on Linux. One fails, the other quietly succeeds and hands
+/// back an empty database.
+///
+/// It matters because [`tilde`] puts that exact form on screen: the status bar
+/// offers `~/Library/…`, and the obvious thing to do with a path you can see
+/// is to type it back in.
+pub fn untilde(path: &Path) -> PathBuf {
+    // `~user` is somebody else's home directory, which this cannot resolve
+    // and should not guess at; `strip_prefix` matches whole components, so it
+    // declines that and leaves the path alone.
+    match path.strip_prefix("~") {
+        Ok(rest) => match dirs::home_dir() {
+            Some(home) => home.join(rest),
+            None => path.to_path_buf(),
+        },
+        Err(_) => path.to_path_buf(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What the status bar shows has to be something the Database tab will
+    /// take back, or the app is telling the user a path it cannot then open.
+    #[test]
+    fn a_displayed_path_can_be_typed_back_in() {
+        let Some(home) = dirs::home_dir() else {
+            return;
+        };
+        let path = home.join("Somewhere").join("accounts.sqlite");
+
+        let shown = tilde(&path);
+        assert!(shown.starts_with("~/"), "{shown}");
+        assert_eq!(untilde(Path::new(&shown)), path);
+    }
+
+    #[test]
+    fn other_paths_are_left_exactly_as_they_are() {
+        for untouched in ["/var/db/accounts.sqlite", "accounts.sqlite", "~user/db"] {
+            assert_eq!(untilde(Path::new(untouched)), PathBuf::from(untouched));
+        }
     }
 }

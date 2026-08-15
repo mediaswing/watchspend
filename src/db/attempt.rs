@@ -98,7 +98,11 @@ impl Attempt {
         let (sender, receiver) = channel();
         let work = target.clone();
         let spawned = std::thread::Builder::new()
-            .name("database-connect".to_owned())
+            // Linux caps a thread name at 15 bytes and silently truncates
+            // past that, which is a poor thing to discover in a backtrace
+            // while working out why a connection is hanging. Short enough to
+            // survive intact there and still mean something on macOS.
+            .name("db-connect".to_owned())
             .spawn(move || {
                 let _ = sender.send(work.open_and_check(year, currency));
             });

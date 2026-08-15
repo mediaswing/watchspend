@@ -7,6 +7,8 @@
 //! [`Store`] itself synchronous, so the rest of the app does not need to know
 //! that one of its three backends is async underneath.
 
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use tiberius::{AuthMethod, Client, Config, EncryptionLevel};
 use tokio::net::TcpStream;
@@ -14,6 +16,13 @@ use tokio::runtime::Runtime;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt as _};
 
 use super::{CategoryTotal, Error, NewSpend, Result, SpendEntry, Store, clean_category_name};
+
+/// How long to wait on a server that is not answering, same as
+/// [`super::mariadb::CONNECT_TIMEOUT`]. A closed port fails fast on its own;
+/// this is for the host that is asleep, unplugged, or behind a firewall that
+/// drops the packet instead of rejecting it, where nothing would come back
+/// otherwise.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -97,8 +106,9 @@ impl MsSqlStore {
             .map_err(|e| Error::Backend(format!("Could not start a connection thread: {e}")))?;
 
         let client = rt.block_on(async move {
-            let tcp = TcpStream::connect(config.get_addr())
+            let tcp = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(config.get_addr()))
                 .await
+                .map_err(|_| Error::Backend("Timed out connecting to the server.".to_owned()))?
                 .map_err(backend_io)?;
             tcp.set_nodelay(true).map_err(backend_io)?;
             Client::connect(config, tcp.compat_write())

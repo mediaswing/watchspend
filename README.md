@@ -82,23 +82,42 @@ there is no network, the app says nothing at all.
 You can point the app at a different file from the Database tab; it is created
 if it is not there yet.
 
-**MariaDB** (or MySQL) is the other option, for when several machines should
-share one set of figures. Fill in the host, port, database, user name and
-password, optionally turn on TLS, and use **Test Connection** before
-committing to it. The two tables are created on first connection, so the user
-needs `CREATE` as well as `SELECT` and `INSERT`.
+**MariaDB** (or MySQL) and **SQL Server** are the other two options, for when
+several machines — or several people — should share one set of figures. Fill
+in the host, port, database, user name and password, optionally turn on TLS,
+and use **Test Connection** before committing to it. The tables are created on
+first connection, so the login needs enough rights to create them:
+
+- MariaDB/MySQL: `CREATE`, `SELECT` and `INSERT`.
+- SQL Server: `CREATE TABLE`, `REFERENCES`, `SELECT` and `INSERT` — SQL
+  Server splits these up more finely than MariaDB does, and in particular
+  wants `REFERENCES` granted separately for the foreign key between the two
+  tables. Simplest is to make the login `db_owner` of the database, or a
+  member of `db_datareader` and `db_datawriter` plus the DDL rights above.
+
+Every category and spending entry is stamped with the login that wrote it,
+and every read is filtered back down to just that login — so several people
+can point the app at the same server and each only ever sees their own data,
+as long as each has their own login. This reuses the database's own
+authentication rather than the app inventing one of its own: there is no
+separate sign-in, and nothing stops someone with direct access to the
+database (or a shared login) from seeing everything, the same as any other
+database. A database that already has data in it from before this existed
+gets upgraded the first time anyone connects: the existing rows are handed to
+whoever connects first, and the app carries on from there.
 
 Connecting happens on a background thread, so a server that is asleep or
-misspelled costs you a message rather than a frozen window, and the app keeps
-whatever database it already had. Reads and writes during a session are still
-made on the main thread: against a local file that is imperceptible, but a
-network that stalls mid-query can still pause the window until the fifteen
-second timeout.
+misspelled costs you a message within five seconds rather than a frozen
+window, and the app keeps whatever database it already had. Reads and writes
+during a session are still made on the main thread: against a local file that
+is imperceptible, but a network that stalls mid-query can still pause the
+window — MariaDB bounds this to fifteen seconds; SQL Server has no such bound
+once the connection itself is up.
 
 The choice is remembered in `config.json` next to the default database file.
-The MariaDB password is only written there if you tick the box that says so —
-that file is plain text, kept readable by you alone, and no more secure than
-that.
+The MariaDB/SQL Server password is only written there if you tick the box
+that says so — that file is plain text, kept readable by you alone, and no
+more secure than that.
 
 ## Currencies and dates
 
@@ -138,11 +157,16 @@ cargo test
 The tests cover the places where being wrong would be expensive: locale
 formatting and parsing (including that `1,50` means different amounts in
 different places, and that a date is never quietly reinterpreted), the SQLite
-queries behind the totals, the MariaDB settings checked before any connection
-is attempted, every report format (that the Word file is a valid package, that
-user text cannot become markup or a spreadsheet formula, that the totals in one
-table match the totals in the next), the version comparison behind the update
-prompt, and that both sound files still decode.
+queries behind the totals, the MariaDB and SQL Server settings checked before
+any connection is attempted, every report format (that the Word file is a
+valid package, that user text cannot become markup or a spreadsheet formula
+— including a negative amount, which is a number and not a formula — and
+that the totals in one table match the totals in the next), the version
+comparison behind the update prompt, and that both sound files still decode.
+
+One more test needs a real SQL Server and is not part of that run:
+`db::mssql::tests::live_server_round_trip`, marked `#[ignore]` and described
+where it lives in `src/db/mssql.rs`.
 
 ## Building elsewhere
 
@@ -150,8 +174,8 @@ Every push is built and tested on Ubuntu, Apple silicon macOS and Windows by
 [the CI workflow](.github/workflows/ci.yml), which leaves a release binary for
 each as a downloadable artifact.
 
-On Linux the window, the sound and the MariaDB TLS option need a few
-development packages that the other two platforms already have:
+On Linux the window, the sound and the MariaDB/SQL Server TLS options need a
+few development packages that the other two platforms already have:
 
 ```sh
 sudo apt-get install libasound2-dev libssl-dev libwayland-dev \

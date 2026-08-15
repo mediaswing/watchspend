@@ -7,6 +7,8 @@ each has cost you so far this year, and write the year out as a report you can
 keep, send or print. Written in Rust, with
 [egui](https://github.com/emilk/egui) for the interface.
 
+What changed in each release is in [`CHANGELOG.md`](CHANGELOG.md).
+
 Everything you read or type — the currency symbol, where it sits, how digits
 are grouped, the order of the parts of a date — comes from your system locale.
 In the United Kingdom that means `£1,234.56` and `11/08/2026`; in Germany the

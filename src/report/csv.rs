@@ -105,11 +105,18 @@ fn plain_amount(minor: i64, locale: &Locale) -> String {
 /// in a file the recipient trusts because their colleague sent it. Prefixing
 /// with an apostrophe is the usual defence: the spreadsheet shows the text and
 /// evaluates nothing.
+///
+/// A leading `-` or `+` is on the dangerous list too, but [`plain_amount`]
+/// legitimately produces `-12.34` for a refund, and quoting that turns it
+/// into text a spreadsheet's `SUM()` skips over. A bare signed number cannot
+/// itself be a formula — there is nothing after the sign for a spreadsheet to
+/// evaluate — so it is let through unquoted; anything else with a dangerous
+/// lead still is.
 fn field(value: &str, delimiter: char) -> String {
     let dangerous_lead = matches!(
         value.chars().next(),
         Some('=' | '+' | '-' | '@' | '\t' | '\r')
-    );
+    ) && !is_plain_number(value);
     let mut text = if dangerous_lead {
         format!("'{value}")
     } else {
@@ -121,6 +128,19 @@ fn field(value: &str, delimiter: char) -> String {
         text = format!("\"{}\"", text.replace('"', "\"\""));
     }
     text
+}
+
+/// Whether `value` is nothing but an optional sign, digits, and at most one
+/// decimal separator — the shape [`plain_amount`] produces. A formula needs
+/// more than that to do anything, so this is enough to tell a real negative
+/// number apart from `-HYPERLINK(...)` or `-cmd|'/c calc'!A1`.
+fn is_plain_number(value: &str) -> bool {
+    let body = value.strip_prefix(['+', '-']).unwrap_or(value);
+    !body.is_empty()
+        && body
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == ',')
+        && body.chars().filter(|c| *c == '.' || *c == ',').count() <= 1
 }
 
 #[cfg(test)]
@@ -187,6 +207,23 @@ mod tests {
         let csv = text(&report, &uk());
         assert!(!csv.contains("\r\n=cmd"), "a formula reached a cell: {csv}");
         assert!(csv.contains("'=cmd"), "{csv}");
+    }
+
+    #[test]
+    fn negative_amounts_stay_plain_numbers() {
+        assert_eq!(field("-12.34", ','), "-12.34");
+        // A comma decimal separator only stays unquoted when it is not also
+        // the delimiter — render() picks ';' for exactly that locale.
+        assert_eq!(field("-12,34", ';'), "-12,34");
+        assert_eq!(field("-0", ','), "-0");
+        // Still caught: a dangerous lead followed by anything but digits.
+        assert_eq!(field("-HYPERLINK(1)", ','), "'-HYPERLINK(1)");
+        assert_eq!(field("-1+1", ','), "'-1+1");
+
+        let report = Report::build(2026, vec![entry((2026, 2, 2), "Refund", -1234)]);
+        let csv = text(&report, &uk());
+        assert!(csv.contains(",-12.34,"), "{csv}");
+        assert!(!csv.contains("'-12.34"), "{csv}");
     }
 
     #[test]

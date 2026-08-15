@@ -61,8 +61,8 @@ jobs:
           key: ${{ matrix.artifact }}
 
       # The other two platforms bring their own. On Linux: ALSA for the sound
-      # effects, OpenSSL for the MariaDB TLS option, and the X11/Wayland and
-      # keyboard libraries the window itself needs.
+      # effects, OpenSSL for the MariaDB and SQL Server TLS options, and the
+      # X11/Wayland and keyboard libraries the window itself needs.
       - name: Install build dependencies
         if: runner.os == 'Linux'
         run: |

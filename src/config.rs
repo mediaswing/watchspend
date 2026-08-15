@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::db::mariadb::MariaDbSettings;
+use crate::db::mssql::MsSqlSettings;
 
 /// Which backend the user chose on the Database tab.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -12,6 +13,7 @@ pub enum Backend {
     #[default]
     Sqlite,
     MariaDb,
+    MsSql,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -21,9 +23,10 @@ pub struct Config {
     /// `None` means the default file in the app's data directory.
     pub sqlite_path: Option<PathBuf>,
     pub mariadb: MariaDbSettings,
-    /// Whether the MariaDB password may be written to the config file. Off by
-    /// default: the file is plain text, and saying so is better than a
-    /// surprise.
+    pub mssql: MsSqlSettings,
+    /// Whether the MariaDB/SQL Server password may be written to the config
+    /// file. Off by default: the file is plain text, and saying so is better
+    /// than a surprise.
     pub remember_password: bool,
     /// Whether to ask GitHub at startup if there is a newer release.
     ///
@@ -47,6 +50,7 @@ impl Default for Config {
             backend: Backend::default(),
             sqlite_path: None,
             mariadb: MariaDbSettings::default(),
+            mssql: MsSqlSettings::default(),
             remember_password: false,
             check_for_updates: true,
             dismissed_update: None,
@@ -78,6 +82,7 @@ impl Config {
         let mut to_write = self.clone();
         if !to_write.remember_password {
             to_write.mariadb.password.clear();
+            to_write.mssql.password.clear();
         }
         let json = serde_json::to_string_pretty(&to_write)
             .map_err(|e| std::io::Error::other(e.to_string()))?;

@@ -2,7 +2,7 @@
 name = "generic-accounting-system"
 version = "1.1.0"
 edition = "2024"
-description = "A graphical budgeting app: categories, spending, reports in CSV, Word, HTML and JSON, and a choice of SQLite or MariaDB"
+description = "A graphical budgeting app: categories, spending, reports in CSV, Word, HTML and JSON, and a choice of SQLite, MariaDB or SQL Server"
 license = "GPL-3.0-or-later"
 
 [dependencies]
@@ -16,6 +16,9 @@ serde_json = "1"
 dirs = "6"
 rusqlite = { version = "0.40", features = ["bundled"] }
 mysql = { version = "28", default-features = false, features = ["minimal", "derive", "buffer-pool", "native-tls"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono"] }
+tokio = { version = "1", default-features = false, features = ["rt", "net", "time"] }
+tokio-util = { version = "0.7", default-features = false, features = ["compat"] }
 rodio = { version = "0.22", default-features = false, features = ["playback", "wav"] }
 log = "0.4.33"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

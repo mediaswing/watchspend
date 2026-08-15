@@ -12,13 +12,17 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
-use super::{Store, mariadb::MariaDbSettings, mariadb::MariaDbStore, sqlite::SqliteStore};
+use super::{
+    Store, mariadb::MariaDbSettings, mariadb::MariaDbStore, mssql::MsSqlSettings,
+    mssql::MsSqlStore, sqlite::SqliteStore,
+};
 
 /// A database to open.
 #[derive(Clone, Debug)]
 pub enum Target {
     Sqlite(PathBuf),
     MariaDb(MariaDbSettings),
+    MsSql(MsSqlSettings),
 }
 
 impl Target {
@@ -30,13 +34,17 @@ impl Target {
                 "MariaDB · {}@{}:{}/{}",
                 settings.username, settings.host, settings.port, settings.database
             ),
+            Self::MsSql(settings) => format!(
+                "SQL Server · {}@{}:{}/{}",
+                settings.username, settings.host, settings.port, settings.database
+            ),
         }
     }
 
     /// Whether opening this is worth going to another thread for. A local file
     /// is not: the flicker of an empty window would last longer than the work.
     pub fn is_slow(&self) -> bool {
-        matches!(self, Self::MariaDb(_))
+        !matches!(self, Self::Sqlite(_))
     }
 
     /// Open it, and prove it is usable before anyone relies on it.
@@ -55,6 +63,9 @@ impl Target {
             }
             Self::MariaDb(settings) => {
                 Box::new(MariaDbStore::connect(settings).map_err(|e| e.to_string())?)
+            }
+            Self::MsSql(settings) => {
+                Box::new(MsSqlStore::connect(settings).map_err(|e| e.to_string())?)
             }
         };
 

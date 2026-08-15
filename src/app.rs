@@ -126,6 +126,7 @@ impl App {
         let target = match self.config.backend {
             Backend::Sqlite => Target::Sqlite(self.config.sqlite_path()),
             Backend::MariaDb => Target::MariaDb(self.config.mariadb.clone()),
+            Backend::MsSql => Target::MsSql(self.config.mssql.clone()),
         };
 
         if target.is_slow() {

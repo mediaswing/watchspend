@@ -1,4 +1,4 @@
-//! The Database pane: SQLite by default, or a MariaDB server instead.
+//! The Database pane: SQLite by default, or a MariaDB or SQL Server instead.
 
 use egui::{RichText, Ui};
 
@@ -7,6 +7,7 @@ use crate::config::{self, Backend, Config};
 use crate::db::Store;
 use crate::db::attempt::{Attempt, Purpose, Target};
 use crate::db::mariadb::MariaDbSettings;
+use crate::db::mssql::MsSqlSettings;
 use crate::ui;
 
 pub struct State {
@@ -14,7 +15,9 @@ pub struct State {
     /// Edited as text so the user can paste a path in.
     pub sqlite_path: String,
     pub mariadb: MariaDbSettings,
-    pub port: String,
+    pub mariadb_port: String,
+    pub mssql: MsSqlSettings,
+    pub mssql_port: String,
     pub remember_password: bool,
     /// What went wrong with the last attempt, kept beside the fields it is
     /// about rather than only in the status bar.
@@ -27,7 +30,9 @@ impl State {
             backend: config.backend,
             sqlite_path: config.sqlite_path().display().to_string(),
             mariadb: config.mariadb.clone(),
-            port: config.mariadb.port.to_string(),
+            mariadb_port: config.mariadb.port.to_string(),
+            mssql: config.mssql.clone(),
+            mssql_port: config.mssql.port.to_string(),
             remember_password: config.remember_password,
             error: None,
         }
@@ -62,6 +67,13 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             "MariaDB server",
             "A server you already run, so several machines can share the figures.",
         );
+        choice(
+            ui,
+            &mut state.backend,
+            Backend::MsSql,
+            "SQL Server",
+            "A Microsoft SQL Server instance, on this machine or another.",
+        );
         ui.add_space(14.0);
 
         match state.backend {
@@ -87,7 +99,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             }
             Backend::MariaDb => {
                 ui::labelled_field(ui, "Host", &mut state.mariadb.host, "localhost");
-                ui::labelled_field(ui, "Port", &mut state.port, "3306");
+                ui::labelled_field(ui, "Port", &mut state.mariadb_port, "3306");
                 ui::labelled_field(ui, "Database", &mut state.mariadb.database, "accounts");
                 ui::labelled_field(ui, "User name", &mut state.mariadb.username, "");
                 ui::labelled_password(ui, "Password", &mut state.mariadb.password);
@@ -108,6 +120,40 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     RichText::new(
                         "The tables are created on first connection, so the user needs \
                          CREATE as well as SELECT and INSERT.",
+                    )
+                    .size(12.0)
+                    .weak(),
+                );
+                ui.add_space(10.0);
+                test_clicked = ui
+                    .add_enabled_ui(!connecting, |ui| ui::wide_button(ui, "Test Connection"))
+                    .inner
+                    .clicked();
+            }
+            Backend::MsSql => {
+                ui::labelled_field(ui, "Host", &mut state.mssql.host, "localhost");
+                ui::labelled_field(ui, "Port", &mut state.mssql_port, "1433");
+                ui::labelled_field(ui, "Database", &mut state.mssql.database, "accounts");
+                ui::labelled_field(ui, "User name", &mut state.mssql.username, "");
+                ui::labelled_password(ui, "Password", &mut state.mssql.password);
+
+                ui.checkbox(&mut state.mssql.use_tls, "Encrypt the connection");
+                if state.mssql.use_tls {
+                    ui.checkbox(
+                        &mut state.mssql.tls_skip_verify,
+                        "Accept a certificate that does not match the host name",
+                    );
+                }
+                ui.checkbox(
+                    &mut state.remember_password,
+                    "Remember the password (stored as plain text in the config file)",
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(
+                        "The tables are created on first connection, which needs CREATE \
+                         TABLE, REFERENCES, SELECT and INSERT — simplest is to make the \
+                         login db_owner of this database.",
                     )
                     .size(12.0)
                     .weak(),
@@ -178,11 +224,9 @@ fn choice(ui: &mut Ui, current: &mut Backend, value: Backend, title: &str, detai
     ui.add_space(8.0);
 }
 
-/// Read the port out of the text field, since it is the one number here.
-fn port_of(app: &App) -> Result<u16, String> {
-    app.database
-        .port
-        .trim()
+/// Read a port out of a text field, since it is the one number here.
+fn parse_port(text: &str) -> Result<u16, String> {
+    text.trim()
         .parse::<u16>()
         .map_err(|_| "The port has to be a number between 1 and 65535.".to_owned())
 }
@@ -195,8 +239,13 @@ fn target_of(app: &App) -> Result<Target, String> {
         ))),
         Backend::MariaDb => {
             let mut settings = app.database.mariadb.clone();
-            settings.port = port_of(app)?;
+            settings.port = parse_port(&app.database.mariadb_port)?;
             Ok(Target::MariaDb(settings))
+        }
+        Backend::MsSql => {
+            let mut settings = app.database.mssql.clone();
+            settings.port = parse_port(&app.database.mssql_port)?;
+            Ok(Target::MsSql(settings))
         }
     }
 }
@@ -265,7 +314,10 @@ pub fn connection_finished(
     app.config.backend = app.database.backend;
     app.config.sqlite_path = Some(std::path::PathBuf::from(app.database.sqlite_path.trim()));
     app.config.mariadb = app.database.mariadb.clone();
-    app.config.mariadb.port = port_of(app).unwrap_or(app.config.mariadb.port);
+    app.config.mariadb.port =
+        parse_port(&app.database.mariadb_port).unwrap_or(app.config.mariadb.port);
+    app.config.mssql = app.database.mssql.clone();
+    app.config.mssql.port = parse_port(&app.database.mssql_port).unwrap_or(app.config.mssql.port);
     app.config.remember_password = app.database.remember_password;
 
     if let Err(err) = app.config.save() {

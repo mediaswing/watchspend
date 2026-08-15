@@ -75,6 +75,11 @@ impl MariaDbSettings {
 pub struct MariaDbStore {
     conn: Conn,
     label: String,
+    /// The login this connection authenticated as. A server can be shared by
+    /// several people, so every row is stamped with whoever wrote it and
+    /// every read is filtered back down to just them — the database's own
+    /// login is the only account system this needs.
+    owner: String,
 }
 
 impl MariaDbStore {
@@ -86,6 +91,7 @@ impl MariaDbStore {
                 "MariaDB · {}@{}:{}/{}",
                 settings.username, settings.host, settings.port, settings.database
             ),
+            owner: settings.username.trim().to_owned(),
         };
         store.migrate()?;
         Ok(store)
@@ -95,8 +101,10 @@ impl MariaDbStore {
         self.conn
             .query_drop(
                 "CREATE TABLE IF NOT EXISTS categories (
-                     id   INT AUTO_INCREMENT PRIMARY KEY,
-                     name VARCHAR(64) COLLATE utf8mb4_unicode_ci NOT NULL UNIQUE
+                     id    INT AUTO_INCREMENT PRIMARY KEY,
+                     owner VARCHAR(255) NOT NULL,
+                     name  VARCHAR(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+                     CONSTRAINT categories_owner_name UNIQUE (owner, name)
                  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
             )
             .map_err(backend)?;
@@ -104,6 +112,7 @@ impl MariaDbStore {
             .query_drop(
                 "CREATE TABLE IF NOT EXISTS spending (
                      id           INT AUTO_INCREMENT PRIMARY KEY,
+                     owner        VARCHAR(255) NOT NULL,
                      category_id  INT NOT NULL,
                      spent_on     DATE NOT NULL,
                      amount_minor BIGINT NOT NULL,
@@ -114,14 +123,77 @@ impl MariaDbStore {
                  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
             )
             .map_err(backend)?;
+        self.claim_legacy_rows()
+    }
+
+    /// A database opened before per-owner data existed has no `owner` column,
+    /// and a `categories.name` that had to be unique for everybody at once.
+    /// Bring one up to date exactly once: add the column, hand whatever is
+    /// already in it to whoever connects and finds it that way — there was
+    /// only ever one owner before now, so this is just naming them — then
+    /// swap the old database-wide uniqueness for one scoped to (owner, name)
+    /// so different people can each have their own "Groceries".
+    fn claim_legacy_rows(&mut self) -> Result<()> {
+        let has_owner: Option<i64> = self
+            .conn
+            .query_first(
+                "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories'
+                    AND COLUMN_NAME = 'owner'",
+            )
+            .map_err(backend)?;
+        if has_owner.is_some() {
+            return Ok(());
+        }
+
+        self.conn
+            .query_drop("ALTER TABLE categories ADD COLUMN owner VARCHAR(255) NOT NULL DEFAULT ''")
+            .map_err(backend)?;
+        self.conn
+            .query_drop("ALTER TABLE spending ADD COLUMN owner VARCHAR(255) NOT NULL DEFAULT ''")
+            .map_err(backend)?;
+        self.conn
+            .exec_drop(
+                "UPDATE categories SET owner = :owner WHERE owner = ''",
+                params! { "owner" => &self.owner },
+            )
+            .map_err(backend)?;
+        self.conn
+            .exec_drop(
+                "UPDATE spending SET owner = :owner WHERE owner = ''",
+                params! { "owner" => &self.owner },
+            )
+            .map_err(backend)?;
+
+        // The old constraint was never named, so MariaDB picked a name for
+        // it — look up whatever that was rather than guessing.
+        let old_index: Option<String> = self
+            .conn
+            .query_first(
+                "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories'
+                    AND COLUMN_NAME = 'name' AND NON_UNIQUE = 0 AND INDEX_NAME <> 'PRIMARY'
+                  LIMIT 1",
+            )
+            .map_err(backend)?;
+        if let Some(index_name) = old_index {
+            self.conn
+                .query_drop(format!("DROP INDEX `{index_name}` ON categories"))
+                .map_err(backend)?;
+        }
+        self.conn
+            .query_drop(
+                "ALTER TABLE categories ADD CONSTRAINT categories_owner_name UNIQUE (owner, name)",
+            )
+            .map_err(backend)?;
         Ok(())
     }
 
     fn category_id(&mut self, name: &str) -> Result<Option<u64>> {
         self.conn
             .exec_first(
-                "SELECT id FROM categories WHERE name = :name",
-                params! { "name" => name },
+                "SELECT id FROM categories WHERE owner = :owner AND name = :name",
+                params! { "owner" => &self.owner, "name" => name },
             )
             .map_err(backend)
     }
@@ -139,9 +211,10 @@ impl Store for MariaDbStore {
                      ON s.category_id = c.id
                     AND s.currency = :currency
                     AND YEAR(s.spent_on) = :year
+                  WHERE c.owner = :owner
                   GROUP BY c.id, c.name
                   ORDER BY c.name",
-                params! { "currency" => currency, "year" => year },
+                params! { "owner" => &self.owner, "currency" => currency, "year" => year },
                 |(name, total, entries): (String, i64, i64)| CategoryTotal {
                     name,
                     total_minor: total,
@@ -156,8 +229,8 @@ impl Store for MariaDbStore {
             .conn
             .exec_first(
                 "SELECT COUNT(*) FROM spending
-                  WHERE currency <> :currency AND YEAR(spent_on) = :year",
-                params! { "currency" => currency, "year" => year },
+                  WHERE owner = :owner AND currency <> :currency AND YEAR(spent_on) = :year",
+                params! { "owner" => &self.owner, "currency" => currency, "year" => year },
             )
             .map_err(backend)?;
         Ok(count.unwrap_or(0))
@@ -174,9 +247,9 @@ impl Store for MariaDbStore {
                 "SELECT DATE_FORMAT(s.spent_on, '%Y-%m-%d'), c.name, s.amount_minor, s.description
                    FROM spending s
                    JOIN categories c ON c.id = s.category_id
-                  WHERE s.currency = :currency AND YEAR(s.spent_on) = :year
+                  WHERE s.owner = :owner AND s.currency = :currency AND YEAR(s.spent_on) = :year
                   ORDER BY s.spent_on, c.name, s.id",
-                params! { "currency" => currency, "year" => year },
+                params! { "owner" => &self.owner, "currency" => currency, "year" => year },
             )
             .map_err(backend)?;
 
@@ -201,8 +274,8 @@ impl Store for MariaDbStore {
         }
         self.conn
             .exec_drop(
-                "INSERT INTO categories (name) VALUES (:name)",
-                params! { "name" => &name },
+                "INSERT INTO categories (owner, name) VALUES (:owner, :name)",
+                params! { "owner" => &self.owner, "name" => &name },
             )
             .map_err(backend)?;
         Ok(())
@@ -214,9 +287,11 @@ impl Store for MariaDbStore {
         })?;
         self.conn
             .exec_drop(
-                "INSERT INTO spending (category_id, spent_on, amount_minor, currency, description)
-                 VALUES (:category_id, :spent_on, :amount_minor, :currency, :description)",
+                "INSERT INTO spending
+                     (owner, category_id, spent_on, amount_minor, currency, description)
+                 VALUES (:owner, :category_id, :spent_on, :amount_minor, :currency, :description)",
                 params! {
+                    "owner" => &self.owner,
                     "category_id" => category_id,
                     "spent_on" => as_mysql_date(spend.spent_on),
                     "amount_minor" => spend.amount_minor,

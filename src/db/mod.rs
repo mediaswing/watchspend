@@ -1,10 +1,12 @@
-//! Storage: the same small set of operations, over either SQLite or MariaDB.
+//! Storage: the same small set of operations, over SQLite, MariaDB or SQL
+//! Server.
 //!
 //! The app only ever talks to the [`Store`] trait, so the Database tab can
 //! swap the backend underneath it without anything else noticing.
 
 pub mod attempt;
 pub mod mariadb;
+pub mod mssql;
 pub mod sqlite;
 
 use chrono::NaiveDate;

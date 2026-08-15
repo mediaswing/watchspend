@@ -118,7 +118,7 @@ impl Store for SqliteStore {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT s.spent_on, c.name, s.amount_minor, s.description
+                "SELECT s.id, s.spent_on, c.name, s.amount_minor, s.description
                    FROM spending s
                    JOIN categories c ON c.id = s.category_id
                   WHERE s.currency = ?1
@@ -135,16 +135,17 @@ impl Store for SqliteStore {
                     format!("{year:04}-12-31")
                 ],
                 |row| {
-                    let date: String = row.get(0)?;
-                    Ok((date, row.get(1)?, row.get(2)?, row.get(3)?))
+                    let date: String = row.get(1)?;
+                    Ok((row.get(0)?, date, row.get(2)?, row.get(3)?, row.get(4)?))
                 },
             )
             .map_err(backend)?;
 
         let mut entries = Vec::new();
         for row in rows {
-            let (date, category, amount_minor, description) = row.map_err(backend)?;
+            let (id, date, category, amount_minor, description) = row.map_err(backend)?;
             entries.push(SpendEntry {
+                id,
                 spent_on: parse_stored_date(&date)?,
                 category,
                 amount_minor,
@@ -185,6 +186,69 @@ impl Store for SqliteStore {
         Ok(())
     }
 
+    fn update_spend(&mut self, id: i64, spend: &NewSpend) -> Result<()> {
+        let category_id = self.category_id(&spend.category)?.ok_or_else(|| {
+            Error::Rejected(format!("There is no category called “{}”.", spend.category))
+        })?;
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE spending
+                    SET category_id = ?1, spent_on = ?2, amount_minor = ?3,
+                        currency = ?4, description = ?5
+                  WHERE id = ?6",
+                params![
+                    category_id,
+                    spend.spent_on.format("%Y-%m-%d").to_string(),
+                    spend.amount_minor,
+                    spend.currency,
+                    spend.description,
+                    id,
+                ],
+            )
+            .map_err(backend)?;
+        not_found_unless_changed(changed)
+    }
+
+    fn delete_spend(&mut self, id: i64) -> Result<()> {
+        let changed = self
+            .conn
+            .execute("DELETE FROM spending WHERE id = ?1", params![id])
+            .map_err(backend)?;
+        not_found_unless_changed(changed)
+    }
+
+    fn rename_category(&mut self, old_name: &str, new_name: &str) -> Result<()> {
+        let new_name = clean_category_name(new_name)?;
+        let id = self
+            .category_id(old_name)?
+            .ok_or_else(|| Error::Rejected(format!("There is no category called “{old_name}”.")))?;
+        if let Some(existing) = self.category_id(&new_name)?
+            && existing != id
+        {
+            return Err(Error::Rejected(format!(
+                "“{new_name}” is already a category."
+            )));
+        }
+        self.conn
+            .execute(
+                "UPDATE categories SET name = ?1 WHERE id = ?2",
+                params![new_name, id],
+            )
+            .map_err(backend)?;
+        Ok(())
+    }
+
+    fn delete_category(&mut self, name: &str) -> Result<()> {
+        let id = self
+            .category_id(name)?
+            .ok_or_else(|| Error::Rejected(format!("There is no category called “{name}”.")))?;
+        self.conn
+            .execute("DELETE FROM categories WHERE id = ?1", params![id])
+            .map_err(|e| category_delete_error(name, e))?;
+        Ok(())
+    }
+
     fn describe(&self) -> String {
         format!("SQLite · {}", crate::config::tilde(&self.path))
     }
@@ -192,6 +256,30 @@ impl Store for SqliteStore {
 
 fn backend(e: rusqlite::Error) -> Error {
     Error::Backend(e.to_string())
+}
+
+/// A zero-row UPDATE/DELETE means the id was never there, or was already
+/// gone — either way there is nothing to tell the two cases apart, and
+/// nothing worth leaking either way.
+fn not_found_unless_changed(changed: usize) -> Result<()> {
+    if changed == 0 {
+        return Err(Error::Rejected("That entry no longer exists.".to_owned()));
+    }
+    Ok(())
+}
+
+/// The foreign key from `spending` is what actually stops a category with
+/// entries in it from being deleted; this turns that specific failure into
+/// something worth reading rather than a raw constraint-violation message.
+fn category_delete_error(name: &str, e: rusqlite::Error) -> Error {
+    if let rusqlite::Error::SqliteFailure(inner, _) = &e
+        && inner.code == rusqlite::ErrorCode::ConstraintViolation
+    {
+        return Error::Rejected(format!(
+            "“{name}” still has spending entries — delete or move them first."
+        ));
+    }
+    backend(e)
 }
 
 /// SQLite has no date type, so dates are kept as `YYYY-MM-DD` text. Anything
@@ -285,5 +373,107 @@ mod tests {
             s.add_spend(&spend("Nowhere", 100, (2026, 3, 1))),
             Err(Error::Rejected(_))
         ));
+    }
+
+    #[test]
+    fn updating_a_spend_entry_changes_it() {
+        let mut s = store();
+        s.add_category("Books").unwrap();
+        s.add_category("Games").unwrap();
+        s.add_spend(&spend("Books", 500, (2026, 3, 1))).unwrap();
+        let id = s.spending_in_year(2026, "GBP").unwrap()[0].id;
+
+        let mut corrected = spend("Games", 750, (2026, 3, 2));
+        corrected.description = "Actually a game".to_owned();
+        s.update_spend(id, &corrected).unwrap();
+
+        let entries = s.spending_in_year(2026, "GBP").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].category, "Games");
+        assert_eq!(entries[0].amount_minor, 750);
+        assert_eq!(entries[0].description, "Actually a game");
+
+        let totals = s.categories_with_totals(2026, "GBP").unwrap();
+        assert_eq!(
+            totals.iter().find(|c| c.name == "Books").unwrap().entries,
+            0
+        );
+        assert_eq!(
+            totals.iter().find(|c| c.name == "Games").unwrap().entries,
+            1
+        );
+    }
+
+    #[test]
+    fn deleting_a_spend_entry_removes_it() {
+        let mut s = store();
+        s.add_category("Books").unwrap();
+        s.add_spend(&spend("Books", 500, (2026, 3, 1))).unwrap();
+        let id = s.spending_in_year(2026, "GBP").unwrap()[0].id;
+
+        s.delete_spend(id).unwrap();
+
+        assert!(s.spending_in_year(2026, "GBP").unwrap().is_empty());
+        assert_eq!(
+            s.categories_with_totals(2026, "GBP").unwrap()[0].total_minor,
+            0
+        );
+    }
+
+    #[test]
+    fn editing_or_deleting_a_missing_entry_is_rejected() {
+        let mut s = store();
+        s.add_category("Books").unwrap();
+        assert!(matches!(
+            s.update_spend(9999, &spend("Books", 100, (2026, 3, 1))),
+            Err(Error::Rejected(_))
+        ));
+        assert!(matches!(s.delete_spend(9999), Err(Error::Rejected(_))));
+    }
+
+    #[test]
+    fn renaming_a_category_keeps_its_spending() {
+        let mut s = store();
+        s.add_category("Books").unwrap();
+        s.add_spend(&spend("Books", 500, (2026, 3, 1))).unwrap();
+
+        s.rename_category("Books", "Reading").unwrap();
+
+        let totals = s.categories_with_totals(2026, "GBP").unwrap();
+        assert_eq!(totals.len(), 1);
+        assert_eq!(totals[0].name, "Reading");
+        assert_eq!(totals[0].total_minor, 500);
+    }
+
+    #[test]
+    fn renaming_into_an_existing_name_is_rejected() {
+        let mut s = store();
+        s.add_category("Books").unwrap();
+        s.add_category("Games").unwrap();
+        assert!(matches!(
+            s.rename_category("Books", "Games"),
+            Err(Error::Rejected(_))
+        ));
+    }
+
+    #[test]
+    fn deleting_an_empty_category_succeeds() {
+        let mut s = store();
+        s.add_category("Books").unwrap();
+        s.delete_category("Books").unwrap();
+        assert!(s.categories_with_totals(2026, "GBP").unwrap().is_empty());
+    }
+
+    #[test]
+    fn deleting_a_category_with_entries_is_rejected() {
+        let mut s = store();
+        s.add_category("Books").unwrap();
+        s.add_spend(&spend("Books", 500, (2026, 3, 1))).unwrap();
+        assert!(matches!(
+            s.delete_category("Books"),
+            Err(Error::Rejected(_))
+        ));
+        // Refusing to delete it must not have deleted it halfway.
+        assert_eq!(s.categories_with_totals(2026, "GBP").unwrap().len(), 1);
     }
 }

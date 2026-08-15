@@ -241,10 +241,10 @@ impl Store for MariaDbStore {
         // backends hand this code the same thing: `chrono` support is an
         // optional feature of the MySQL driver and not one worth taking on for
         // a single column.
-        let rows: Vec<(String, String, i64, String)> = self
+        let rows: Vec<(i64, String, String, i64, String)> = self
             .conn
             .exec(
-                "SELECT DATE_FORMAT(s.spent_on, '%Y-%m-%d'), c.name, s.amount_minor, s.description
+                "SELECT s.id, DATE_FORMAT(s.spent_on, '%Y-%m-%d'), c.name, s.amount_minor, s.description
                    FROM spending s
                    JOIN categories c ON c.id = s.category_id
                   WHERE s.owner = :owner AND s.currency = :currency AND YEAR(s.spent_on) = :year
@@ -254,8 +254,9 @@ impl Store for MariaDbStore {
             .map_err(backend)?;
 
         rows.into_iter()
-            .map(|(date, category, amount_minor, description)| {
+            .map(|(id, date, category, amount_minor, description)| {
                 Ok(SpendEntry {
+                    id,
                     spent_on: chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(
                         |_| Error::Backend(format!("A stored date is not a date: {date:?}")),
                     )?,
@@ -303,9 +304,103 @@ impl Store for MariaDbStore {
         Ok(())
     }
 
+    fn update_spend(&mut self, id: i64, spend: &NewSpend) -> Result<()> {
+        let category_id = self.category_id(&spend.category)?.ok_or_else(|| {
+            Error::Rejected(format!("There is no category called “{}”.", spend.category))
+        })?;
+        self.conn
+            .exec_drop(
+                "UPDATE spending
+                    SET category_id = :category_id, spent_on = :spent_on,
+                        amount_minor = :amount_minor, currency = :currency,
+                        description = :description
+                  WHERE id = :id AND owner = :owner",
+                params! {
+                    "owner" => &self.owner,
+                    "id" => id,
+                    "category_id" => category_id,
+                    "spent_on" => as_mysql_date(spend.spent_on),
+                    "amount_minor" => spend.amount_minor,
+                    "currency" => &spend.currency,
+                    "description" => &spend.description,
+                },
+            )
+            .map_err(backend)?;
+        not_found_unless_changed(self.conn.affected_rows())
+    }
+
+    fn delete_spend(&mut self, id: i64) -> Result<()> {
+        self.conn
+            .exec_drop(
+                "DELETE FROM spending WHERE id = :id AND owner = :owner",
+                params! { "id" => id, "owner" => &self.owner },
+            )
+            .map_err(backend)?;
+        not_found_unless_changed(self.conn.affected_rows())
+    }
+
+    fn rename_category(&mut self, old_name: &str, new_name: &str) -> Result<()> {
+        let new_name = clean_category_name(new_name)?;
+        let id = self
+            .category_id(old_name)?
+            .ok_or_else(|| Error::Rejected(format!("There is no category called “{old_name}”.")))?;
+        if let Some(existing) = self.category_id(&new_name)?
+            && existing != id
+        {
+            return Err(Error::Rejected(format!(
+                "“{new_name}” is already a category."
+            )));
+        }
+        self.conn
+            .exec_drop(
+                "UPDATE categories SET name = :name WHERE id = :id AND owner = :owner",
+                params! { "name" => &new_name, "id" => id, "owner" => &self.owner },
+            )
+            .map_err(backend)?;
+        Ok(())
+    }
+
+    fn delete_category(&mut self, name: &str) -> Result<()> {
+        let id = self
+            .category_id(name)?
+            .ok_or_else(|| Error::Rejected(format!("There is no category called “{name}”.")))?;
+        self.conn
+            .exec_drop(
+                "DELETE FROM categories WHERE id = :id AND owner = :owner",
+                params! { "id" => id, "owner" => &self.owner },
+            )
+            .map_err(|e| category_delete_error(name, e))?;
+        Ok(())
+    }
+
     fn describe(&self) -> String {
         self.label.clone()
     }
+}
+
+/// A zero-row UPDATE/DELETE means the id was never there, or was already
+/// gone — either way there is nothing to tell the two cases apart, and
+/// nothing worth leaking either way.
+fn not_found_unless_changed(changed: u64) -> Result<()> {
+    if changed == 0 {
+        return Err(Error::Rejected("That entry no longer exists.".to_owned()));
+    }
+    Ok(())
+}
+
+/// The foreign key from `spending` is what actually stops a category with
+/// entries in it from being deleted; this turns that specific failure (MySQL
+/// error 1451, "Cannot delete or update a parent row") into something worth
+/// reading rather than a raw constraint-violation message.
+fn category_delete_error(name: &str, e: mysql::Error) -> Error {
+    if let mysql::Error::MySqlError(inner) = &e
+        && inner.code == 1451
+    {
+        return Error::Rejected(format!(
+            "“{name}” still has spending entries — delete or move them first."
+        ));
+    }
+    backend(e)
 }
 
 /// `chrono` integration is an optional feature of the `mysql` crate, and the

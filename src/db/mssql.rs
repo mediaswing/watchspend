@@ -350,7 +350,7 @@ impl Store for MsSqlStore {
         self.rt.block_on(async move {
             let rows = client
                 .query(
-                    "SELECT s.spent_on, c.name, s.amount_minor, s.description
+                    "SELECT s.id, s.spent_on, c.name, s.amount_minor, s.description
                        FROM spending s
                        JOIN categories c ON c.id = s.category_id
                       WHERE s.owner = @P1 AND s.currency = @P2 AND YEAR(s.spent_on) = @P3
@@ -366,10 +366,14 @@ impl Store for MsSqlStore {
             rows.into_iter()
                 .map(|row| {
                     Ok(SpendEntry {
-                        spent_on: column(&row, 0, "spending.spent_on")?,
-                        category: column_string(&row, 1, "categories.name")?,
-                        amount_minor: column(&row, 2, "amount_minor")?,
-                        description: column_string(&row, 3, "description")?,
+                        // `id` is `INT IDENTITY` — 32 bits on the wire, like
+                        // `categories.id` elsewhere in this file — widened
+                        // to match `SpendEntry::id`'s `i64`.
+                        id: i64::from(column::<i32>(&row, 0, "spending.id")?),
+                        spent_on: column(&row, 1, "spending.spent_on")?,
+                        category: column_string(&row, 2, "categories.name")?,
+                        amount_minor: column(&row, 3, "amount_minor")?,
+                        description: column_string(&row, 4, "description")?,
                     })
                 })
                 .collect()
@@ -422,9 +426,123 @@ impl Store for MsSqlStore {
         })
     }
 
+    fn update_spend(&mut self, id: i64, spend: &NewSpend) -> Result<()> {
+        let category_id = self.category_id(&spend.category)?.ok_or_else(|| {
+            Error::Rejected(format!("There is no category called “{}”.", spend.category))
+        })?;
+        let client = &mut self.client;
+        let owner = self.owner.as_str();
+        let changed = self.rt.block_on(async move {
+            client
+                .execute(
+                    "UPDATE spending
+                        SET category_id = @P1, spent_on = @P2, amount_minor = @P3,
+                            currency = @P4, description = @P5
+                      WHERE id = @P6 AND owner = @P7",
+                    &[
+                        &category_id,
+                        &spend.spent_on,
+                        &spend.amount_minor,
+                        &spend.currency.as_str(),
+                        &spend.description.as_str(),
+                        &id,
+                        &owner,
+                    ],
+                )
+                .await
+                .map_err(backend)
+        })?;
+        not_found_unless_changed(&changed)
+    }
+
+    fn delete_spend(&mut self, id: i64) -> Result<()> {
+        let client = &mut self.client;
+        let owner = self.owner.as_str();
+        let changed = self.rt.block_on(async move {
+            client
+                .execute(
+                    "DELETE FROM spending WHERE id = @P1 AND owner = @P2",
+                    &[&id, &owner],
+                )
+                .await
+                .map_err(backend)
+        })?;
+        not_found_unless_changed(&changed)
+    }
+
+    fn rename_category(&mut self, old_name: &str, new_name: &str) -> Result<()> {
+        let new_name = clean_category_name(new_name)?;
+        let id = self
+            .category_id(old_name)?
+            .ok_or_else(|| Error::Rejected(format!("There is no category called “{old_name}”.")))?;
+        if let Some(existing) = self.category_id(&new_name)?
+            && existing != id
+        {
+            return Err(Error::Rejected(format!(
+                "“{new_name}” is already a category."
+            )));
+        }
+        let client = &mut self.client;
+        let owner = self.owner.as_str();
+        self.rt.block_on(async move {
+            client
+                .execute(
+                    "UPDATE categories SET name = @P1 WHERE id = @P2 AND owner = @P3",
+                    &[&new_name.as_str(), &id, &owner],
+                )
+                .await
+                .map_err(backend)?;
+            Ok(())
+        })
+    }
+
+    fn delete_category(&mut self, name: &str) -> Result<()> {
+        let id = self
+            .category_id(name)?
+            .ok_or_else(|| Error::Rejected(format!("There is no category called “{name}”.")))?;
+        let client = &mut self.client;
+        let owner = self.owner.as_str();
+        self.rt.block_on(async move {
+            client
+                .execute(
+                    "DELETE FROM categories WHERE id = @P1 AND owner = @P2",
+                    &[&id, &owner],
+                )
+                .await
+                .map_err(|e| category_delete_error(name, e))?;
+            Ok(())
+        })
+    }
+
     fn describe(&self) -> String {
         self.label.clone()
     }
+}
+
+/// A zero-row UPDATE/DELETE means the id was never there, or was already
+/// gone — either way there is nothing to tell the two cases apart, and
+/// nothing worth leaking either way.
+fn not_found_unless_changed(result: &tiberius::ExecuteResult) -> Result<()> {
+    if result.rows_affected().iter().sum::<u64>() == 0 {
+        return Err(Error::Rejected("That entry no longer exists.".to_owned()));
+    }
+    Ok(())
+}
+
+/// The foreign key from `spending` is what actually stops a category with
+/// entries in it from being deleted; this turns that specific failure (SQL
+/// Server error 547, "The DELETE statement conflicted with the REFERENCE
+/// constraint") into something worth reading rather than a raw
+/// constraint-violation message.
+fn category_delete_error(name: &str, e: tiberius::error::Error) -> Error {
+    if let tiberius::error::Error::Server(token) = &e
+        && token.code() == 547
+    {
+        return Error::Rejected(format!(
+            "“{name}” still has spending entries — delete or move them first."
+        ));
+    }
+    backend(e)
 }
 
 /// Read a column out, treating a NULL where the query never allows one as a
@@ -583,6 +701,84 @@ mod tests {
             .entries_in_other_currencies(year, "GBP")
             .expect("entries_in_other_currencies");
         println!("entries in other currencies this year: {other}");
+
+        // Editing and deleting, and everything left tidied up afterwards
+        // rather than accumulating "Smoke ..." categories in a real database
+        // every time this runs.
+        let id = entry.id;
+
+        assert!(
+            matches!(
+                store.update_spend(999_999_999, &spend),
+                Err(Error::Rejected(_))
+            ),
+            "an id that was never there should be refused, not silently accepted"
+        );
+        assert!(
+            matches!(store.delete_spend(999_999_999), Err(Error::Rejected(_))),
+            "same for deleting one"
+        );
+
+        let mut corrected = spend.clone();
+        corrected.amount_minor = 4321;
+        corrected.description = format!("{marker}-corrected");
+        store.update_spend(id, &corrected).expect("update_spend");
+        let updated = store
+            .spending_in_year(year, "GBP")
+            .expect("spending_in_year")
+            .into_iter()
+            .find(|e| e.id == id)
+            .expect("the updated entry should still be there, under the same id");
+        assert_eq!(updated.amount_minor, 4321);
+        assert_eq!(updated.description, corrected.description);
+        println!("update_spend: {updated:?}");
+
+        assert!(
+            matches!(store.delete_category(&category), Err(Error::Rejected(_))),
+            "a category with an entry still in it should be refused"
+        );
+
+        store.delete_spend(id).expect("delete_spend");
+        assert!(
+            !store
+                .spending_in_year(year, "GBP")
+                .expect("spending_in_year")
+                .iter()
+                .any(|e| e.id == id),
+            "the deleted entry should be gone"
+        );
+        println!("delete_spend: removed entry {id}");
+
+        let renamed = format!("{category} renamed");
+        store
+            .rename_category(&category, &renamed)
+            .expect("rename_category");
+        let other_category = format!("Smoke {marker} other");
+        store.add_category(&other_category).expect("add_category");
+        assert!(
+            matches!(
+                store.rename_category(&renamed, &other_category),
+                Err(Error::Rejected(_))
+            ),
+            "renaming onto an existing category name should be refused"
+        );
+        println!("rename_category: {category} -> {renamed}");
+
+        store
+            .delete_category(&renamed)
+            .expect("delete_category on the now-empty renamed category");
+        store
+            .delete_category(&other_category)
+            .expect("delete_category on the other throwaway category");
+        let totals = store
+            .categories_with_totals(year, "GBP")
+            .expect("categories_with_totals");
+        assert!(
+            !totals
+                .iter()
+                .any(|t| t.name == renamed || t.name == other_category),
+            "both throwaway categories should be gone by the end of the test"
+        );
 
         println!("round trip through a real SQL Server succeeded");
     }

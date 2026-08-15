@@ -23,6 +23,9 @@ pub struct CategoryTotal {
 /// One recorded entry, as it comes back out for a report.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpendEntry {
+    /// Stable across reads, and what `update_spend`/`delete_spend` take to
+    /// say which row is meant. Not shown anywhere in the app.
+    pub id: i64,
     pub spent_on: NaiveDate,
     pub category: String,
     pub amount_minor: i64,
@@ -79,6 +82,26 @@ pub trait Store: Send {
     fn add_category(&mut self, name: &str) -> Result<()>;
 
     fn add_spend(&mut self, spend: &NewSpend) -> Result<()>;
+
+    /// Change what an entry says. `id` comes from a [`SpendEntry`] returned
+    /// by [`Self::spending_in_year`]. `Rejected` if the id no longer refers
+    /// to a row — deleted since, or (on a shared server) never this login's
+    /// to begin with — or if `spend.category` does not exist.
+    fn update_spend(&mut self, id: i64, spend: &NewSpend) -> Result<()>;
+
+    /// Remove an entry. Never removes a category. Same `Rejected` case as
+    /// [`Self::update_spend`] for an id that is not there to remove.
+    fn delete_spend(&mut self, id: i64) -> Result<()>;
+
+    /// Change a category's name in place. Same rules as [`Self::add_category`]:
+    /// trimmed, non-empty, at most 64 characters, and `Rejected` if another
+    /// category already has the new name.
+    fn rename_category(&mut self, old_name: &str, new_name: &str) -> Result<()>;
+
+    /// Remove a category. `Rejected` if it still has any spend entries — in
+    /// any year or currency — so this can never take spending history down
+    /// with it.
+    fn delete_category(&mut self, name: &str) -> Result<()>;
 
     /// A short description of where the data is, for the status bar.
     fn describe(&self) -> String;

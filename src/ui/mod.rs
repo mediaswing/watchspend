@@ -2,11 +2,12 @@
 
 pub mod categories;
 pub mod database;
+pub mod entries;
 pub mod reports;
 pub mod spending;
 pub mod update_box;
 
-use egui::{Atom, Color32, Response, RichText, Ui, Widget as _};
+use egui::{Atom, Color32, Id, Response, RichText, Ui, Widget as _};
 
 /// Height of the buttons that span a whole pane.
 const WIDE_BUTTON_HEIGHT: f32 = 40.0;
@@ -80,6 +81,57 @@ pub fn bad_colour(ui: &Ui) -> Color32 {
 pub fn error_text(ui: &mut Ui, message: &str) {
     let colour = bad_colour(ui);
     ui.label(RichText::new(message).color(colour));
+}
+
+/// Ask before something that cannot be undone. Shows nothing while `*open`
+/// is false. Closes itself on Cancel or the box's own close control; returns
+/// `true` the one frame the destructive button is clicked, so the caller can
+/// act on whatever `*open` was guarding and then clear that too.
+pub fn confirm_modal(
+    ctx: &egui::Context,
+    id: Id,
+    open: &mut bool,
+    title: &str,
+    body: &str,
+    confirm_label: &str,
+) -> bool {
+    if !*open {
+        return false;
+    }
+
+    let mut confirmed = false;
+    let mut cancel = false;
+
+    let modal = egui::Modal::new(id).show(ctx, |ui| {
+        ui.set_width(340.0);
+        ui.heading(title);
+        ui.add_space(4.0);
+        ui.label(RichText::new(body).size(13.0));
+        ui.add_space(14.0);
+        ui.horizontal(|ui| {
+            let width = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            if ui
+                .add_sized([width, 36.0], egui::Button::new(centred("Cancel")))
+                .clicked()
+            {
+                cancel = true;
+            }
+            if ui
+                .add_sized([width, 36.0], egui::Button::new(centred(confirm_label)))
+                .clicked()
+            {
+                confirmed = true;
+            }
+        });
+    });
+
+    if modal.should_close() {
+        cancel = true;
+    }
+    if cancel || confirmed {
+        *open = false;
+    }
+    confirmed
 }
 
 /// A pane heading with a quieter line of context under it.

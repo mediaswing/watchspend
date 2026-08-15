@@ -155,15 +155,30 @@ fn record(app: &mut App) {
 /// the first thing to fix.
 fn validate(app: &App) -> Result<NewSpend, String> {
     let state = &app.spending;
+    spend_from_fields(
+        &app.locale,
+        &state.date,
+        state.category.clone(),
+        &state.amount,
+        &state.description,
+    )
+}
 
-    let spent_on = app.locale.parse_date(&state.date)?;
-    let category = state
-        .category
-        .clone()
-        .ok_or_else(|| "Choose a category.".to_owned())?;
-    let amount_minor = app.locale.parse_money(&state.amount)?;
+/// The same checks `validate` runs, pulled out so the Entries tab's edit
+/// form can share them rather than risk drifting from what "Record
+/// Spending" accepts.
+pub(super) fn spend_from_fields(
+    locale: &Locale,
+    date: &str,
+    category: Option<String>,
+    amount: &str,
+    description: &str,
+) -> Result<NewSpend, String> {
+    let spent_on = locale.parse_date(date)?;
+    let category = category.ok_or_else(|| "Choose a category.".to_owned())?;
+    let amount_minor = locale.parse_money(amount)?;
 
-    let description = state.description.trim();
+    let description = description.trim();
     if description.chars().count() > 255 {
         return Err("That description is too long — 255 characters at most.".to_owned());
     }
@@ -172,7 +187,7 @@ fn validate(app: &App) -> Result<NewSpend, String> {
         category,
         spent_on,
         amount_minor,
-        currency: app.locale.currency.code.to_owned(),
+        currency: locale.currency.code.to_owned(),
         description: description.to_owned(),
     })
 }

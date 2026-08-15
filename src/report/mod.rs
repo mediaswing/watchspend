@@ -245,6 +245,8 @@ mod tests {
 
     pub(super) fn entry(date: (i32, u32, u32), category: &str, minor: i64) -> SpendEntry {
         SpendEntry {
+            // No report format reads the id; it only matters to edit/delete.
+            id: 0,
             spent_on: NaiveDate::from_ymd_opt(date.0, date.1, date.2).unwrap(),
             category: category.to_owned(),
             amount_minor: minor,

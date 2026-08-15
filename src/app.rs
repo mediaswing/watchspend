@@ -8,7 +8,7 @@ use egui::{Align, FontFamily, FontId, Layout, RichText, TextStyle};
 use crate::audio::Sounds;
 use crate::config::{Backend, Config};
 use crate::db::attempt::{Attempt, Purpose, Target};
-use crate::db::{CategoryTotal, Store};
+use crate::db::{CategoryTotal, SpendEntry, Store};
 use crate::locale::Locale;
 use crate::ui;
 use crate::update::{self, Update};
@@ -20,14 +20,16 @@ const UBUNTU_BOLD: &[u8] = include_bytes!("../assets/fonts/Ubuntu-Bold.ttf");
 pub enum Tab {
     Categories,
     Spending,
+    Entries,
     Reports,
     Database,
 }
 
 impl Tab {
-    const ALL: [Self; 4] = [
+    const ALL: [Self; 5] = [
         Self::Categories,
         Self::Spending,
+        Self::Entries,
         Self::Reports,
         Self::Database,
     ];
@@ -36,6 +38,7 @@ impl Tab {
         match self {
             Self::Categories => "Categories",
             Self::Spending => "Spending",
+            Self::Entries => "Entries",
             Self::Reports => "Reports",
             Self::Database => "Database",
         }
@@ -61,9 +64,13 @@ pub struct App {
     /// something is written.
     pub totals: Vec<CategoryTotal>,
     pub foreign_entries: i64,
+    /// Every entry in `year`, for the Entries tab — refreshed alongside
+    /// `totals` for the same reason.
+    pub entries: Vec<SpendEntry>,
     pub status: Option<Status>,
     pub categories: ui::categories::State,
     pub spending: ui::spending::State,
+    pub entries_tab: ui::entries::State,
     pub reports: ui::reports::State,
     pub database: ui::database::State,
     /// Bumped whenever anything is written, so panes that cache what they
@@ -94,9 +101,11 @@ impl App {
             year,
             totals: Vec::new(),
             foreign_entries: 0,
+            entries: Vec::new(),
             status: None,
             categories: ui::categories::State::default(),
             spending: ui::spending::State::default(),
+            entries_tab: ui::entries::State::default(),
             reports: ui::reports::State::new(year),
             database,
             update: None,
@@ -177,6 +186,7 @@ impl App {
         let Some(store) = self.store.as_mut() else {
             self.totals.clear();
             self.foreign_entries = 0;
+            self.entries.clear();
             return;
         };
         match store.categories_with_totals(year, currency) {
@@ -185,10 +195,12 @@ impl App {
                 self.foreign_entries = store
                     .entries_in_other_currencies(year, currency)
                     .unwrap_or(0);
+                self.entries = store.spending_in_year(year, currency).unwrap_or_default();
             }
             Err(err) => {
                 self.totals.clear();
                 self.foreign_entries = 0;
+                self.entries.clear();
                 self.status = Some(Status {
                     message: format!("Could not read the categories: {err}"),
                     good: false,
@@ -322,6 +334,7 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ui, |ui| match self.tab {
             Tab::Categories => ui::categories::show(self, ui),
             Tab::Spending => ui::spending::show(self, ui),
+            Tab::Entries => ui::entries::show(self, ui),
             Tab::Reports => ui::reports::show(self, ui),
             Tab::Database => ui::database::show(self, ui),
         });

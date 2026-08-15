@@ -24,9 +24,22 @@ pub struct MariaDbSettings {
     /// Only written to disk if the user asks for it; see `config`.
     pub password: String,
     pub use_tls: bool,
-    /// Accept a server certificate that does not match its hostname. Off by
-    /// default, and labelled plainly in the UI, because it is a real hole.
+    /// Accept a server certificate that does not match its hostname. The
+    /// issuer is still checked, so this is narrower than
+    /// [`super::mssql::MsSqlSettings::tls_skip_verify`] despite the matching
+    /// name. Off by default, and labelled plainly in the UI, because it is
+    /// still a real hole.
     pub tls_skip_verify: bool,
+    /// A certificate authority to trust on top of the public ones, as a path
+    /// to a `.pem` or `.der` file. Empty for the usual case of a certificate
+    /// from a public issuer.
+    ///
+    /// A database server on your own network is very often issued by your own
+    /// authority, which no public list has ever heard of. The driver trusts a
+    /// compiled-in copy of the public roots rather than asking the operating
+    /// system, so unlike the rest of the machine it cannot be told about that
+    /// authority by installing it — hence this.
+    pub ca_cert_path: String,
 }
 
 impl Default for MariaDbSettings {
@@ -39,6 +52,7 @@ impl Default for MariaDbSettings {
             password: String::new(),
             use_tls: false,
             tls_skip_verify: false,
+            ca_cert_path: String::new(),
         }
     }
 }
@@ -55,9 +69,13 @@ impl MariaDbSettings {
             return Err(Error::Rejected("Enter the user name.".to_owned()));
         }
 
-        let ssl = self
-            .use_tls
-            .then(|| SslOpts::default().with_danger_skip_domain_validation(self.tls_skip_verify));
+        let ssl = self.use_tls.then(|| {
+            let ssl = SslOpts::default().with_danger_skip_domain_validation(self.tls_skip_verify);
+            match self.ca_cert_path.trim() {
+                "" => ssl,
+                ca => ssl.with_root_cert_path(Some(std::path::PathBuf::from(ca))),
+            }
+        });
 
         Ok(OptsBuilder::new()
             .ip_or_hostname(Some(self.host.trim()))
@@ -482,5 +500,42 @@ mod tests {
                 .get_ssl_opts()
                 .is_none()
         );
+    }
+
+    /// The driver trusts a compiled-in list of public authorities and never
+    /// consults the operating system, so a server certificate issued in-house
+    /// is only trusted if this path carries it through.
+    #[test]
+    fn an_in_house_authority_reaches_the_driver() {
+        let settings = MariaDbSettings {
+            username: "budget".to_owned(),
+            use_tls: true,
+            ca_cert_path: "  /etc/ssl/company-ca.pem  ".to_owned(),
+            ..Default::default()
+        };
+
+        let opts = mysql::Opts::from(settings.opts().unwrap());
+        let ssl = opts.get_ssl_opts().expect("TLS was asked for");
+        assert_eq!(
+            ssl.root_cert_path(),
+            Some(std::path::Path::new("/etc/ssl/company-ca.pem")),
+            "the path should arrive trimmed"
+        );
+    }
+
+    /// Left blank it must stay absent rather than becoming an empty path the
+    /// driver then fails to open.
+    #[test]
+    fn no_authority_named_means_none_is_sent() {
+        let settings = MariaDbSettings {
+            username: "budget".to_owned(),
+            use_tls: true,
+            ca_cert_path: "   ".to_owned(),
+            ..Default::default()
+        };
+
+        let opts = mysql::Opts::from(settings.opts().unwrap());
+        let ssl = opts.get_ssl_opts().expect("TLS was asked for");
+        assert_eq!(ssl.root_cert_path(), None);
     }
 }

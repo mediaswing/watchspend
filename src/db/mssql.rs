@@ -34,8 +34,15 @@ pub struct MsSqlSettings {
     /// Only written to disk if the user asks for it; see `config`.
     pub password: String,
     pub use_tls: bool,
-    /// Accept a server certificate that does not match its hostname. Off by
-    /// default, and labelled plainly in the UI, because it is a real hole.
+    /// Accept whatever certificate the server presents, from any issuer and
+    /// under any name. Off by default, and labelled plainly in the UI, because
+    /// it is a real hole — but a necessary one: a stock SQL Server install
+    /// makes its own certificate up, and nothing on a Mac or a Linux box has
+    /// any reason to trust it.
+    ///
+    /// Deliberately wider than [`super::mariadb::MariaDbSettings::tls_skip_verify`],
+    /// which only relaxes the name check. The driver here offers no middle
+    /// setting between full verification and none.
     pub tls_skip_verify: bool,
 }
 
@@ -77,6 +84,10 @@ impl MsSqlSettings {
         } else {
             EncryptionLevel::Off
         });
+        // Applies whether or not the box above is ticked, and has to: the
+        // login packet goes through a TLS handshake at either encryption
+        // level, so the server's certificate is checked before the password
+        // is sent regardless.
         if self.tls_skip_verify {
             config.trust_cert();
         }
@@ -630,7 +641,12 @@ mod tests {
     /// MSSQL_TEST_DATABASE, MSSQL_TEST_USER, MSSQL_TEST_PASSWORD (required)
     /// ```
     ///
-    /// then `cargo test --lib db::mssql::tests::live_server_round_trip -- --ignored --nocapture`.
+    /// then, this being a binary crate rather than a library:
+    ///
+    /// ```text
+    /// cargo test --bin generic-accounting-system \
+    ///     db::mssql::tests::live_server_round_trip -- --ignored --nocapture
+    /// ```
     #[test]
     #[ignore]
     fn live_server_round_trip() {

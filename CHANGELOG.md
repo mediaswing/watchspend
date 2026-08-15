@@ -7,17 +7,52 @@ Notable changes to this project, newest first. Versions follow
 
 ## [1.3.0] - 2026-08-15
 
+### Security
+
+- The SQLite database file and the folder holding it are now created
+  private to the user who owns them, and an existing one left readable by
+  an earlier version is tightened on open. On macOS this was already
+  covered by `Application Support`; on Linux the file sat under
+  `~/.local/share`, which on Debian and Ubuntu every other account on the
+  machine can read.
+- **Accept a certificate that does not match the host name** on the SQL
+  Server tab now says what it does — it accepts any certificate, from any
+  issuer, which is not what the MariaDB box of the same name did.
+
 ### Added
 
 - Categories and spend entries can now be edited and deleted, not just
   added. A new **Entries** tab lists every entry for the year with
   Edit/Delete per row; **Categories** gained Rename/Delete per row.
 - The app's first confirm-before-destroying prompts, for both of the above.
+- **CA certificate file**, on the MariaDB tab, for a server whose
+  certificate your own authority issued.
+- A prompt before creating a SQLite database that is not there yet, so a
+  typo in the path no longer opens an empty database and quietly reports
+  success.
 
 ### Changed
 
 - Deleting a category that still has spending in it is refused, with a
   message saying so, on all three backends.
+- TLS is now rustls on all three platforms rather than each platform's
+  own. The Linux binary no longer needs the system OpenSSL, so it runs on
+  distributions whose version differs from the one it was built against,
+  and certificates behave identically everywhere. Certificate authorities
+  now come from a compiled-in list of the public ones rather than from the
+  operating system: a server certificate issued in-house needs the new
+  **CA certificate file** setting, or, on SQL Server, the accept-any box.
+- A `~/…` path typed into **Database file** now means the home directory,
+  as it does everywhere else, rather than a folder actually called `~` —
+  which is the form the status bar displays.
+- The SQL Server certificate setting is no longer hidden behind **Encrypt
+  the connection**. SQL Server encrypts the login regardless, so its
+  certificate was being checked even with that box clear, leaving a stock
+  install unreachable with no visible way to allow it.
+
+### Fixed
+
+- `libssl-dev` is no longer needed to build on Linux.
 
 ## [1.2.0] - 2026-08-15
 

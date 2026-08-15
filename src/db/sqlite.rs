@@ -14,10 +14,9 @@ pub struct SqliteStore {
 impl SqliteStore {
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                Error::Backend(format!("Could not create {}: {e}", parent.display()))
-            })?;
+            create_dir(parent)?;
         }
+        restrict(path)?;
         let conn = Connection::open(path)
             .map_err(|e| Error::Backend(format!("Could not open {}: {e}", path.display())))?;
         conn.pragma_update(None, "foreign_keys", "ON").ok();
@@ -258,6 +257,73 @@ fn backend(e: rusqlite::Error) -> Error {
     Error::Backend(e.to_string())
 }
 
+/// Create the folders leading to the database, private to their owner.
+///
+/// The default location is inside `~/Library/Application Support` on macOS,
+/// which the system already keeps at `0700`. Its counterpart on Linux is
+/// `~/.local/share`, under a home directory that Debian and Ubuntu leave at
+/// `0755` — so without this the folder, and the spending history in it, are
+/// readable by every other account on the machine.
+fn create_dir(parent: &Path) -> Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        builder.mode(0o700);
+    }
+    builder
+        .create(parent)
+        .map_err(|e| Error::Backend(format!("Could not create {}: {e}", parent.display())))
+}
+
+/// Keep the database file itself to its owner, for the same reason as the
+/// folder holding it and on the same terms as the config file: from the moment
+/// it is created, not a moment afterwards, since a file that is briefly
+/// world-readable is a file that was readable.
+///
+/// Creating it empty here is enough — a zero-length file is a valid, empty
+/// SQLite database — and it settles the mode before SQLite writes a byte.
+/// Left to itself SQLite would create it `0644` under the usual umask, and it
+/// copies whatever mode it finds onto the `-journal` and `-wal` files it puts
+/// beside it, so this one file covers those too.
+#[cfg(unix)]
+fn restrict(path: &Path) -> Result<()> {
+    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+
+    // `truncate(false)` is the whole point: an existing database is opened,
+    // never emptied.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(path)
+        .map_err(|e| Error::Backend(format!("Could not open {}: {e}", path.display())))?;
+
+    // `mode` above only applies when creating, so tighten a database left at
+    // `0644` by an earlier, laxer version of this app. Someone else's file in
+    // a shared folder is not ours to chmod, and is perfectly usable as it is,
+    // so a refusal there is worth a line in the log rather than a failure.
+    let Ok(mode) = std::fs::metadata(path).map(|m| m.permissions().mode()) else {
+        return Ok(());
+    };
+    if mode & 0o077 != 0
+        && let Err(err) =
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode & 0o700))
+    {
+        log::warn!("could not restrict {} to its owner: {err}", path.display());
+    }
+    Ok(())
+}
+
+/// Windows inherits its ACL from the folder, which is the user's own profile
+/// directory in the default location.
+#[cfg(not(unix))]
+fn restrict(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
 /// A zero-row UPDATE/DELETE means the id was never there, or was already
 /// gone — either way there is nothing to tell the two cases apart, and
 /// nothing worth leaking either way.
@@ -294,16 +360,85 @@ mod tests {
     use super::*;
     use chrono::NaiveDate;
 
-    fn store() -> SqliteStore {
-        let dir = std::env::temp_dir().join(format!("gas-test-{}", std::process::id()));
-        let path = dir.join(format!(
-            "{}.sqlite",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+    /// A store in a directory of its own, taken away again when the test ends.
+    struct TempStore {
+        store: SqliteStore,
+        dir: PathBuf,
+    }
+
+    impl std::ops::Deref for TempStore {
+        type Target = SqliteStore;
+
+        fn deref(&self) -> &SqliteStore {
+            &self.store
+        }
+    }
+
+    impl std::ops::DerefMut for TempStore {
+        fn deref_mut(&mut self) -> &mut SqliteStore {
+            &mut self.store
+        }
+    }
+
+    impl Drop for TempStore {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn store() -> TempStore {
+        // `temp_dir()` is a private, per-user directory on macOS and the
+        // shared, world-writable `/tmp` on Linux. A predictable name there is
+        // a name another account can get in first with — as a symlink
+        // pointing somewhere else — and PIDs on Linux are both small and
+        // recycled, so the name is random instead. It is removed on the way
+        // out rather than left to accumulate a dozen files per run.
+        use std::hash::{BuildHasher as _, RandomState};
+
+        let dir = std::env::temp_dir().join(format!(
+            "gas-test-{:016x}",
+            RandomState::new().hash_one(std::process::id())
         ));
-        SqliteStore::open(&path).expect("open temp database")
+        let store = SqliteStore::open(&dir.join("accounts.sqlite")).expect("open temp database");
+        TempStore { store, dir }
+    }
+
+    #[cfg(unix)]
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    /// The file holds a complete spending history. macOS keeps it inside an
+    /// `Application Support` directory that is already `0700`; Linux puts it
+    /// under `~/.local/share`, which on Debian and Ubuntu sits in a home
+    /// directory every other account on the machine can walk into.
+    #[cfg(unix)]
+    #[test]
+    fn the_database_is_readable_only_by_its_owner() {
+        let s = store();
+        assert_eq!(mode_of(&s.path), 0o600, "the database file");
+        assert_eq!(
+            mode_of(s.path.parent().unwrap()),
+            0o700,
+            "the folder holding it"
+        );
+    }
+
+    /// Fixing the mode for new files would leave every database made before
+    /// this change exactly as exposed as it was.
+    #[cfg(unix)]
+    #[test]
+    fn a_database_left_open_by_an_earlier_version_is_tightened() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let s = store();
+        let path = s.path.clone();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let reopened = SqliteStore::open(&path).expect("reopen the loosened database");
+        assert_eq!(mode_of(&path), 0o600);
+        drop(reopened);
     }
 
     fn spend(category: &str, minor: i64, date: (i32, u32, u32)) -> NewSpend {

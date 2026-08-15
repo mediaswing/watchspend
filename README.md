@@ -95,6 +95,14 @@ key between the two tables, rather than folding it into `CREATE`) — see
 [`docs/mssql-schema.sql`](docs/mssql-schema.sql) for the exact tables and a
 grant statement to start from.
 
+The app carries its own list of certificate authorities rather than reading the
+one the operating system keeps, so it behaves the same on all three platforms —
+but a database server whose certificate your own authority issued is not on
+that list. Point **CA certificate file** at the authority's `.pem` or `.der` to
+have it trusted, or, for SQL Server, tick **Accept any certificate this server
+offers** — which a stock install, with the certificate it invents for itself,
+generally needs.
+
 Every category and spending entry is stamped with the login that wrote it,
 and every read is filtered back down to just that login — so several people
 can point the app at the same server and each only ever sees their own data,
@@ -174,14 +182,18 @@ Every push is built and tested on Ubuntu, Apple silicon macOS and Windows by
 [the CI workflow](.github/workflows/ci.yml), which leaves a release binary for
 each as a downloadable artifact.
 
-On Linux the window, the sound and the MariaDB/SQL Server TLS options need a
-few development packages that the other two platforms already have:
+On Linux the window and the sound need a few development packages that the
+other two platforms already have:
 
 ```sh
-sudo apt-get install libasound2-dev libssl-dev libwayland-dev \
+sudo apt-get install libasound2-dev libwayland-dev \
   libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
   libxkbcommon-dev libxkbcommon-x11-dev
 ```
+
+TLS is not among them: the app carries its own (rustls), rather than linking
+the system OpenSSL, so the Linux binary does not depend on which version of it
+the machine happens to have.
 
 ## Licence
 

@@ -86,14 +86,12 @@ if it is not there yet.
 several machines — or several people — should share one set of figures. Fill
 in the host, port, database, user name and password, optionally turn on TLS,
 and use **Test Connection** before committing to it. The tables are created on
-first connection, so the login needs enough rights to create them:
-
-- MariaDB/MySQL: `CREATE`, `SELECT` and `INSERT`.
-- SQL Server: `CREATE TABLE`, `REFERENCES`, `SELECT` and `INSERT` — SQL
-  Server splits these up more finely than MariaDB does, and in particular
-  wants `REFERENCES` granted separately for the foreign key between the two
-  tables. Simplest is to make the login `db_owner` of the database, or a
-  member of `db_datareader` and `db_datawriter` plus the DDL rights above.
+first connection, so the login needs `CREATE`, `SELECT`, `INSERT` and
+`REFERENCES` (both engines require `REFERENCES` separately for the foreign
+key between the two tables, rather than folding it into `CREATE`) — see
+[`docs/mariadb-schema.sql`](docs/mariadb-schema.sql) or
+[`docs/mssql-schema.sql`](docs/mssql-schema.sql) for the exact tables and a
+grant statement to start from.
 
 Every category and spending entry is stamped with the login that wrote it,
 and every read is filtered back down to just that login — so several people

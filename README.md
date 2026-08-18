@@ -14,6 +14,13 @@ are grouped, the order of the parts of a date — comes from your system locale.
 In the United Kingdom that means `£1,234.56` and `11/08/2026`; in Germany the
 same figures are `1.234,56 €` and `11.08.2026`.
 
+The words are a separate question from the figures, and are chosen separately:
+the app ships in English and French, follows your system language by default,
+and can be switched to either on the **Settings** tab. Someone running the app
+in French in Canada gets French words and Canadian dollars. Adding a third
+language needs no programming and no rebuild — see
+[Languages](#languages) below.
+
 ## Running it
 
 ```sh
@@ -25,7 +32,7 @@ file under your data directory and starts with no categories in it.
 
 ## The window
 
-Four tabs run down the left-hand side, and the pane on the right shows the one
+Six tabs run down the left-hand side, and the pane on the right shows the one
 you have picked.
 
 **Categories** lists every category with the total spent in it this calendar
@@ -42,7 +49,13 @@ says what and why.
 **Reports** writes a year out as a file: pick the year, pick the format, choose
 whether to include the month-by-month table and the itemised entries, and save.
 
+**Entries** lists every entry recorded this year, oldest first, with Edit and
+Delete on each row.
+
 **Database** chooses where all of this is kept — see below.
+
+**Settings** holds the language, the light/dark choice, and whether the app
+looks for a new version at startup.
 
 Every action either works or does not, and says so twice: a message along the
 bottom of the window, and one of two sounds.
@@ -147,14 +160,52 @@ If you move a database between machines with different locales, entries in the
 other currency are counted and mentioned under the table rather than being
 silently added to a total they do not belong in.
 
+## Languages
+
+The app is in English and French. Which one it uses follows your system
+language unless you choose otherwise on the **Settings** tab, and the change
+takes effect at once — there is no restart.
+
+A language is a plain text file, so adding one needs no programming:
+
+1. Copy [`assets/lang/en.toml`](assets/lang/en.toml). It is the reference
+   file, and it explains its own format in its first twenty lines.
+2. Change `code`, `name` and `plural` at the top, and translate the text to
+   the right of each `=`. Leave the keys alone, and keep the `{braced}` words
+   — you may move them within a sentence, but not rename them.
+3. Drop it in the languages folder, which **Settings** names and has a button
+   to open. Press **Re-read the Files** and it appears in the picker.
+
+You do not have to finish before you can use it: any key you have not
+translated falls back to English, so the app works from your first line. A file
+of the same `code` as a built-in language replaces it, which is how a shipped
+translation gets improved rather than only added to. Whatever the parser could
+not make sense of is listed on the Settings tab with line numbers, and the rest
+of the file is still used.
+
+Money and dates are deliberately *not* in the language file. How an amount and
+a date are written is decided by the region your computer is set to, not by the
+language you read.
+
+The two shipped languages are held to that standard by tests: every key the app
+asks for exists, every line in the file is asked for somewhere, both files use
+the same placeholders, every counted message has all the forms its plural rule
+needs, and the bundled font can actually draw every character in both — a
+translation that arrived as rows of `?` would otherwise be invisible to
+everyone whose own language renders fine.
+
 ## Accessibility
 
-The interface follows the system light or dark theme, and the colours that
-carry meaning are defined for both — a green that reads on white is unreadable
-on charcoal, so each has two. Colour is never the only signal: every message
-says in words what happened. egui exposes the interface through
-[AccessKit](https://accesskit.dev), the window can be zoomed with the usual
-`Ctrl`/`Cmd` and `+`/`-`, and every control can be reached from the keyboard.
+The interface follows the system light or dark theme, or either one on demand
+from the **Settings** tab — changing the whole desktop is not a reasonable
+thing to ask of somebody who wants one window dimmer, and light sensitivity is
+an ordinary reason to want a dark window on a light desktop. Both themes are
+written down as explicit pairs with the contrast worked out, rather than
+inherited: every text colour reaches at least 4.5:1 against the surface it is
+drawn on. Colour is never the only signal — every message says in words what
+happened. egui exposes the interface through [AccessKit](https://accesskit.dev),
+the window can be zoomed with the usual `Ctrl`/`Cmd` and `+`/`-`, and every
+control can be reached from the keyboard.
 
 ## Tests
 
@@ -170,7 +221,9 @@ any connection is attempted, every report format (that the Word file is a
 valid package, that user text cannot become markup or a spreadsheet formula
 — including a negative amount, which is a number and not a formula — and
 that the totals in one table match the totals in the next), the version
-comparison behind the update prompt, and that both sound files still decode.
+comparison behind the update prompt, the language files (see
+[Languages](#languages)), that each appearance setting selects the theme it
+names, and that both sound files still decode.
 
 One more test needs a real SQL Server and is not part of that run:
 `db::mssql::tests::live_server_round_trip`, marked `#[ignore]` and described
@@ -181,6 +234,11 @@ where it lives in `src/db/mssql.rs`.
 Every push is built and tested on Ubuntu, Apple silicon macOS and Windows by
 [the CI workflow](.github/workflows/ci.yml), which leaves a release binary for
 each as a downloadable artifact.
+
+Releases carry macOS and Windows builds only. Linux is still built and tested
+on every commit, and `cargo build --release` is all it takes there — a single
+dynamically linked binary cannot suit the distributions people actually run,
+which is a poorer answer than building it yourself.
 
 On Linux the window and the sound need a few development packages that the
 other two platforms already have:

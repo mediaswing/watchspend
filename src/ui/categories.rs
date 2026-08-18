@@ -4,7 +4,7 @@ use egui::{Align, Id, Layout, RichText, Ui, Widget as _};
 use egui_extras::{Column, TableBuilder};
 
 use crate::app::App;
-use crate::ui;
+use crate::{t, tn, ui};
 
 /// State belonging to this pane alone — everything else lives on [`App`].
 #[derive(Default)]
@@ -55,8 +55,8 @@ impl State {
 pub fn show(app: &mut App, ui: &mut Ui) {
     ui::pane_header(
         ui,
-        "Categories",
-        &format!("Total spent in each category so far in {}", app.year),
+        &t!("categories.title"),
+        &t!("categories.subtitle", year = app.year),
     );
 
     let total: i64 = app.totals.iter().map(|c| c.total_minor).sum();
@@ -72,27 +72,20 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         .show(ui, |ui| {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Total").size(15.0));
+                ui.label(RichText::new(t!("categories.total")).size(15.0));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.label(RichText::new(&grand_total).size(15.0));
                 });
             });
             if foreign > 0 {
                 ui.label(
-                    RichText::new(format!(
-                        "{foreign} {} recorded in another currency and not counted here.",
-                        if foreign == 1 {
-                            "entry was"
-                        } else {
-                            "entries were"
-                        }
-                    ))
-                    .size(12.0)
-                    .weak(),
+                    RichText::new(tn!("categories.foreign", foreign))
+                        .size(12.0)
+                        .weak(),
                 );
             }
             ui.add_space(8.0);
-            add_clicked = ui::wide_button(ui, "Add New Category").clicked();
+            add_clicked = ui::wide_button(ui, &t!("categories.add")).clicked();
             ui.add_space(10.0);
         });
 
@@ -107,7 +100,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         if has_store {
             app.categories.open();
         } else {
-            app.report_error("Connect a database on the Database tab first.");
+            app.report_error(t!("categories.connect_first"));
         }
     }
 
@@ -128,18 +121,18 @@ fn table(app: &App, ui: &mut Ui) -> Option<RowAction> {
         ui.vertical_centered(|ui| {
             ui.label(
                 RichText::new(if app.store.is_some() {
-                    "No categories yet."
+                    t!("categories.empty")
                 } else {
-                    "No database is connected."
+                    t!("common.no_database")
                 })
                 .size(16.0)
                 .weak(),
             );
             ui.label(
                 RichText::new(if app.store.is_some() {
-                    "Add one below to start putting spending into it."
+                    t!("categories.empty_hint")
                 } else {
-                    "Choose one on the Database tab."
+                    t!("common.choose_on_database_tab")
                 })
                 .size(13.0)
                 .weak(),
@@ -163,11 +156,19 @@ fn table(app: &App, ui: &mut Ui) -> Option<RowAction> {
         .column(Column::exact(150.0))
         .header(30.0, |mut header| {
             header.col(|ui| {
-                ui.label(RichText::new("Category").size(13.0).weak());
+                ui.label(
+                    RichText::new(t!("categories.column.name"))
+                        .size(13.0)
+                        .weak(),
+                );
             });
             header.col(|ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.label(RichText::new("Spent").size(13.0).weak());
+                    ui.label(
+                        RichText::new(t!("categories.column.spent"))
+                            .size(13.0)
+                            .weak(),
+                    );
                 });
             });
             header.col(|_ui| {});
@@ -192,10 +193,10 @@ fn table(app: &App, ui: &mut Ui) -> Option<RowAction> {
                     });
                     row.col(|ui| {
                         ui.horizontal(|ui| {
-                            if ui.button("Rename").clicked() {
+                            if ui.button(t!("common.rename")).clicked() {
                                 action = Some(RowAction::Rename(category.name.clone()));
                             }
-                            if ui.button("Delete").clicked() {
+                            if ui.button(t!("common.delete")).clicked() {
                                 action = Some(RowAction::Delete(category.name.clone()));
                             }
                         });
@@ -219,17 +220,13 @@ fn add_category_box(app: &mut App, ctx: &egui::Context) {
 
     let modal = egui::Modal::new(Id::new("add-category")).show(ctx, |ui| {
         ui.set_width(340.0);
-        ui.heading("Add New Category");
+        ui.heading(t!("categories.add.title"));
         ui.add_space(4.0);
-        ui.label(
-            RichText::new("Spending is filed under categories; this adds another one.")
-                .size(13.0)
-                .weak(),
-        );
+        ui.label(RichText::new(t!("categories.add.body")).size(13.0).weak());
         ui.add_space(12.0);
 
         let field = egui::TextEdit::singleline(&mut state.name)
-            .hint_text("e.g. Groceries")
+            .hint_text(t!("categories.name_hint"))
             .desired_width(f32::INFINITY)
             .margin(egui::vec2(8.0, 6.0))
             .ui(ui);
@@ -251,7 +248,10 @@ fn add_category_box(app: &mut App, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             let width = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
             if ui
-                .add_sized([width, 36.0], egui::Button::new(ui::centred("Cancel")))
+                .add_sized(
+                    [width, 36.0],
+                    egui::Button::new(ui::centred(t!("common.cancel"))),
+                )
                 .clicked()
             {
                 cancel = true;
@@ -259,7 +259,7 @@ fn add_category_box(app: &mut App, ctx: &egui::Context) {
             if ui
                 .add_sized(
                     [width, 36.0],
-                    egui::Button::new(ui::centred("Add Category")),
+                    egui::Button::new(ui::centred(t!("categories.add.confirm"))),
                 )
                 .clicked()
             {
@@ -283,15 +283,13 @@ fn add_category_box(app: &mut App, ctx: &egui::Context) {
     let name = app.categories.name.trim().to_owned();
     let result = match app.store.as_mut() {
         Some(store) => store.add_category(&name),
-        None => Err(crate::db::Error::Rejected(
-            "No database is connected.".to_owned(),
-        )),
+        None => Err(crate::db::Error::Rejected(t!("common.no_database"))),
     };
     match result {
         Ok(()) => {
             app.categories.close();
             app.reload_totals();
-            app.report_ok(format!("Added the category “{name}”."));
+            app.report_ok(t!("status.category_added", name = name));
         }
         Err(err) => {
             // The box stays open with the reason in it, so the typing is not
@@ -314,19 +312,17 @@ fn rename_category_box(app: &mut App, ctx: &egui::Context) {
 
     let modal = egui::Modal::new(Id::new("rename-category")).show(ctx, |ui| {
         ui.set_width(340.0);
-        ui.heading("Rename Category");
+        ui.heading(t!("categories.rename.title"));
         ui.add_space(4.0);
         ui.label(
-            RichText::new(format!(
-                "Renaming “{old_name}”. Its spending stays with it."
-            ))
-            .size(13.0)
-            .weak(),
+            RichText::new(t!("categories.rename.body", name = old_name))
+                .size(13.0)
+                .weak(),
         );
         ui.add_space(12.0);
 
         let field = egui::TextEdit::singleline(&mut state.rename_name)
-            .hint_text("e.g. Groceries")
+            .hint_text(t!("categories.name_hint"))
             .desired_width(f32::INFINITY)
             .margin(egui::vec2(8.0, 6.0))
             .ui(ui);
@@ -347,13 +343,19 @@ fn rename_category_box(app: &mut App, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             let width = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
             if ui
-                .add_sized([width, 36.0], egui::Button::new(ui::centred("Cancel")))
+                .add_sized(
+                    [width, 36.0],
+                    egui::Button::new(ui::centred(t!("common.cancel"))),
+                )
                 .clicked()
             {
                 cancel = true;
             }
             if ui
-                .add_sized([width, 36.0], egui::Button::new(ui::centred("Save")))
+                .add_sized(
+                    [width, 36.0],
+                    egui::Button::new(ui::centred(t!("common.save"))),
+                )
                 .clicked()
             {
                 submit = true;
@@ -376,15 +378,17 @@ fn rename_category_box(app: &mut App, ctx: &egui::Context) {
     let new_name = app.categories.rename_name.trim().to_owned();
     let result = match app.store.as_mut() {
         Some(store) => store.rename_category(&old_name, &new_name),
-        None => Err(crate::db::Error::Rejected(
-            "No database is connected.".to_owned(),
-        )),
+        None => Err(crate::db::Error::Rejected(t!("common.no_database"))),
     };
     match result {
         Ok(()) => {
             app.categories.close_rename();
             app.reload_totals();
-            app.report_ok(format!("Renamed “{old_name}” to “{new_name}”."));
+            app.report_ok(t!(
+                "status.category_renamed",
+                old = old_name,
+                new = new_name
+            ));
         }
         Err(err) => {
             app.categories.rename_error = Some(err.to_string());
@@ -404,9 +408,9 @@ fn delete_confirm(app: &mut App, ctx: &egui::Context) {
         ctx,
         Id::new("delete-category"),
         &mut open,
-        "Delete Category?",
-        &format!("Delete “{name}”? This cannot be undone."),
-        "Delete",
+        &t!("categories.delete.title"),
+        &t!("categories.delete.body", name = name),
+        &t!("common.delete"),
     );
     if !open {
         app.categories.confirm_delete = None;
@@ -417,14 +421,12 @@ fn delete_confirm(app: &mut App, ctx: &egui::Context) {
 
     let result = match app.store.as_mut() {
         Some(store) => store.delete_category(&name),
-        None => Err(crate::db::Error::Rejected(
-            "No database is connected.".to_owned(),
-        )),
+        None => Err(crate::db::Error::Rejected(t!("common.no_database"))),
     };
     match result {
         Ok(()) => {
             app.reload_totals();
-            app.report_ok(format!("Deleted the category “{name}”."));
+            app.report_ok(t!("status.category_deleted", name = name));
         }
         Err(err) => {
             app.report_error(err.to_string());

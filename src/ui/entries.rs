@@ -7,8 +7,8 @@ use egui_extras::{Column, TableBuilder};
 use crate::app::App;
 use crate::db::SpendEntry;
 use crate::locale::Locale;
-use crate::ui;
 use crate::ui::spending::spend_from_fields;
+use crate::{t, ui};
 
 #[derive(Default)]
 pub struct State {
@@ -59,8 +59,8 @@ enum RowAction {
 pub fn show(app: &mut App, ui: &mut Ui) {
     ui::pane_header(
         ui,
-        "Entries",
-        &format!("Everything recorded in {}, oldest first", app.year),
+        &t!("entries.title"),
+        &t!("entries.subtitle", year = app.year),
     );
 
     let action = table(app, ui);
@@ -86,18 +86,18 @@ fn table(app: &App, ui: &mut Ui) -> Option<RowAction> {
         ui.vertical_centered(|ui| {
             ui.label(
                 RichText::new(if app.store.is_some() {
-                    "No entries yet."
+                    t!("entries.empty")
                 } else {
-                    "No database is connected."
+                    t!("common.no_database")
                 })
                 .size(16.0)
                 .weak(),
             );
             ui.label(
                 RichText::new(if app.store.is_some() {
-                    "Record some on the Spending tab and they will show up here."
+                    t!("entries.empty_hint")
                 } else {
-                    "Choose one on the Database tab."
+                    t!("common.choose_on_database_tab")
                 })
                 .size(13.0)
                 .weak(),
@@ -119,18 +119,26 @@ fn table(app: &App, ui: &mut Ui) -> Option<RowAction> {
         .column(Column::exact(130.0))
         .header(30.0, |mut header| {
             header.col(|ui| {
-                ui.label(RichText::new("Date").size(13.0).weak());
+                ui.label(RichText::new(t!("entries.column.date")).size(13.0).weak());
             });
             header.col(|ui| {
-                ui.label(RichText::new("Category").size(13.0).weak());
+                ui.label(
+                    RichText::new(t!("entries.column.category"))
+                        .size(13.0)
+                        .weak(),
+                );
             });
             header.col(|ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.label(RichText::new("Amount").size(13.0).weak());
+                    ui.label(RichText::new(t!("entries.column.amount")).size(13.0).weak());
                 });
             });
             header.col(|ui| {
-                ui.label(RichText::new("Description").size(13.0).weak());
+                ui.label(
+                    RichText::new(t!("entries.column.description"))
+                        .size(13.0)
+                        .weak(),
+                );
             });
             header.col(|_ui| {});
         })
@@ -153,15 +161,15 @@ fn table(app: &App, ui: &mut Ui) -> Option<RowAction> {
                     });
                     row.col(|ui| {
                         ui.horizontal(|ui| {
-                            if ui.button("Edit").clicked() {
+                            if ui.button(t!("common.edit")).clicked() {
                                 action = Some(RowAction::Edit(entry.clone()));
                             }
-                            if ui.button("Delete").clicked() {
-                                let label = format!(
-                                    "{} in {} on {}",
-                                    app.locale.format_money(entry.amount_minor),
-                                    entry.category,
-                                    app.locale.format_date(entry.spent_on)
+                            if ui.button(t!("common.delete")).clicked() {
+                                let label = t!(
+                                    "entries.label",
+                                    amount = app.locale.format_money(entry.amount_minor),
+                                    category = entry.category,
+                                    date = app.locale.format_date(entry.spent_on),
                                 );
                                 action = Some(RowAction::Delete {
                                     id: entry.id,
@@ -192,16 +200,16 @@ fn edit_box(app: &mut App, ctx: &egui::Context) {
 
     let modal = egui::Modal::new(Id::new("edit-entry")).show(ctx, |ui| {
         ui.set_width(360.0);
-        ui.heading("Edit Entry");
+        ui.heading(t!("entries.edit.title"));
         ui.add_space(12.0);
 
-        ui::labelled_field(ui, "Date", &mut state.date, &date_hint);
+        ui::labelled_field(ui, &t!("spending.date"), &mut state.date, &date_hint);
 
-        ui.label(RichText::new("Category").size(13.0));
+        ui.label(RichText::new(t!("spending.category")).size(13.0));
         let selected = state
             .category
             .clone()
-            .unwrap_or_else(|| "Choose a category…".to_owned());
+            .unwrap_or_else(|| t!("spending.choose_category"));
         egui::ComboBox::from_id_salt("edit-entry-category")
             .selected_text(selected)
             .width(ui.available_width() - 10.0)
@@ -214,7 +222,7 @@ fn edit_box(app: &mut App, ctx: &egui::Context) {
 
         let field = ui::labelled_field(
             ui,
-            &format!("Amount ({})", app.locale.currency.symbol),
+            &t!("spending.amount", symbol = app.locale.currency.symbol),
             &mut state.amount,
             &amount_hint,
         );
@@ -225,9 +233,9 @@ fn edit_box(app: &mut App, ctx: &egui::Context) {
 
         ui::labelled_field(
             ui,
-            "Description (optional)",
+            &t!("spending.description"),
             &mut state.description,
-            "What was it for?",
+            &t!("spending.description_hint"),
         );
 
         if let Some(error) = &state.error {
@@ -239,13 +247,19 @@ fn edit_box(app: &mut App, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             let width = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
             if ui
-                .add_sized([width, 36.0], egui::Button::new(ui::centred("Cancel")))
+                .add_sized(
+                    [width, 36.0],
+                    egui::Button::new(ui::centred(t!("common.cancel"))),
+                )
                 .clicked()
             {
                 cancel = true;
             }
             if ui
-                .add_sized([width, 36.0], egui::Button::new(ui::centred("Save")))
+                .add_sized(
+                    [width, 36.0],
+                    egui::Button::new(ui::centred(t!("common.save"))),
+                )
                 .clicked()
             {
                 submit = true;
@@ -281,15 +295,13 @@ fn edit_box(app: &mut App, ctx: &egui::Context) {
 
     let result = match app.store.as_mut() {
         Some(store) => store.update_spend(id, &spend),
-        None => Err(crate::db::Error::Rejected(
-            "No database is connected.".to_owned(),
-        )),
+        None => Err(crate::db::Error::Rejected(t!("common.no_database"))),
     };
     match result {
         Ok(()) => {
             app.entries_tab.close_edit();
             app.reload_totals();
-            app.report_ok("Saved the change.");
+            app.report_ok(t!("status.entry_saved"));
         }
         Err(err) => {
             app.entries_tab.error = Some(err.to_string());
@@ -309,9 +321,9 @@ fn delete_confirm(app: &mut App, ctx: &egui::Context) {
         ctx,
         Id::new("delete-entry"),
         &mut open,
-        "Delete Entry?",
-        &format!("Delete {label}? This cannot be undone."),
-        "Delete",
+        &t!("entries.delete.title"),
+        &t!("entries.delete.body", what = label),
+        &t!("common.delete"),
     );
     if !open {
         app.entries_tab.confirm_delete = None;
@@ -322,14 +334,12 @@ fn delete_confirm(app: &mut App, ctx: &egui::Context) {
 
     let result = match app.store.as_mut() {
         Some(store) => store.delete_spend(id),
-        None => Err(crate::db::Error::Rejected(
-            "No database is connected.".to_owned(),
-        )),
+        None => Err(crate::db::Error::Rejected(t!("common.no_database"))),
     };
     match result {
         Ok(()) => {
             app.reload_totals();
-            app.report_ok("Deleted the entry.");
+            app.report_ok(t!("status.entry_deleted"));
         }
         Err(err) => {
             app.report_error(err.to_string());

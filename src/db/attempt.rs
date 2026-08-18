@@ -16,6 +16,7 @@ use super::{
     Store, mariadb::MariaDbSettings, mariadb::MariaDbStore, mssql::MsSqlSettings,
     mssql::MsSqlStore, sqlite::SqliteStore,
 };
+use crate::t;
 
 /// A database to open.
 #[derive(Clone, Debug)]
@@ -57,7 +58,7 @@ impl Target {
         let mut store: Box<dyn Store> = match self {
             Self::Sqlite(path) => {
                 if path.as_os_str().is_empty() {
-                    return Err("Give the database file a path.".to_owned());
+                    return Err(t!("database.file_needs_a_path"));
                 }
                 Box::new(SqliteStore::open(path).map_err(|e| e.to_string())?)
             }
@@ -71,7 +72,7 @@ impl Target {
 
         store
             .categories_with_totals(year, currency)
-            .map_err(|err| format!("Connected, but could not read from it: {err}"))?;
+            .map_err(|err| t!("database.connected_but_unreadable", error = err))?;
 
         Ok(store)
     }
@@ -111,7 +112,7 @@ impl Attempt {
             // A machine that cannot spawn a thread has worse problems, but the
             // app should still say something rather than wait forever.
             let (sender, receiver) = channel();
-            let _ = sender.send(Err(format!("Could not start the connection: {err}")));
+            let _ = sender.send(Err(t!("database.could_not_start", error = err)));
             return Self {
                 receiver,
                 purpose,
@@ -133,9 +134,7 @@ impl Attempt {
             Err(TryRecvError::Empty) => None,
             // The thread died without sending, which should not happen; say so
             // rather than leaving the app waiting on it.
-            Err(TryRecvError::Disconnected) => Some(Err(
-                "The connection attempt stopped unexpectedly.".to_owned(),
-            )),
+            Err(TryRecvError::Disconnected) => Some(Err(t!("database.attempt_stopped"))),
         }
     }
 }

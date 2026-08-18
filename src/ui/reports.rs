@@ -4,7 +4,7 @@ use egui::{RichText, Ui};
 
 use crate::app::App;
 use crate::report::{Format, Report, Sections};
-use crate::ui;
+use crate::{t, tn, ui};
 
 pub struct State {
     pub year: i32,
@@ -43,11 +43,7 @@ fn default_folder() -> String {
 }
 
 pub fn show(app: &mut App, ui: &mut Ui) {
-    ui::pane_header(
-        ui,
-        "Reports",
-        "Write a year's spending out as a file you can keep, send or print",
-    );
+    ui::pane_header(ui, &t!("reports.title"), &t!("reports.subtitle"));
 
     refresh(app);
 
@@ -58,29 +54,28 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         summary(app, ui);
         ui.add_space(14.0);
 
-        ui.label(RichText::new("Format").size(13.0));
+        ui.label(RichText::new(t!("reports.format")).size(13.0));
         format_row(&mut app.reports.format, ui);
-        ui.label(
-            RichText::new(app.reports.format.detail())
-                .size(12.0)
-                .weak(),
-        );
+        ui.label(RichText::new(app.reports.format.detail()).size(12.0).weak());
         ui.add_space(12.0);
 
-        ui.label(RichText::new("Include").size(13.0));
-        ui.checkbox(&mut app.reports.sections.monthly, "A month-by-month table");
+        ui.label(RichText::new(t!("reports.include")).size(13.0));
+        ui.checkbox(
+            &mut app.reports.sections.monthly,
+            t!("reports.include.monthly"),
+        );
         ui.checkbox(
             &mut app.reports.sections.entries,
-            "Every entry, itemised",
+            t!("reports.include.entries"),
         );
         ui.add_space(12.0);
 
-        let folder_label = format!(
-            "Save in this folder, as {}",
-            file_name(app.reports.year, app.reports.format)
+        let folder_label = t!(
+            "reports.folder",
+            name = file_name(app.reports.year, app.reports.format)
         );
         let mut folder = std::mem::take(&mut app.reports.folder);
-        ui::labelled_field(ui, &folder_label, &mut folder, "path to a folder");
+        ui::labelled_field(ui, &folder_label, &mut folder, &t!("reports.folder_hint"));
         app.reports.folder = folder;
 
         if let Some(error) = &app.reports.error {
@@ -94,14 +89,10 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             .as_ref()
             .is_some_and(|report| !report.entries.is_empty());
         ui.add_space(4.0);
-        save = ui::wide_button(ui, "Save Report").clicked();
+        save = ui::wide_button(ui, &t!("reports.save")).clicked();
         if !has_figures {
             ui.add_space(8.0);
-            ui.label(
-                RichText::new("There is nothing recorded for this year yet — a report of it would be an empty one.")
-                    .size(13.0)
-                    .weak(),
-            );
+            ui.label(RichText::new(t!("reports.nothing_yet")).size(13.0).weak());
         }
     });
 
@@ -114,12 +105,12 @@ pub fn show(app: &mut App, ui: &mut Ui) {
 /// rather than typed: there is exactly one right way to write one here, and a
 /// stepper cannot get it wrong.
 fn year_row(app: &mut App, ui: &mut Ui) {
-    ui.label(RichText::new("Year").size(13.0));
+    ui.label(RichText::new(t!("reports.year")).size(13.0));
     ui.horizontal(|ui| {
         let step = 34.0;
         if ui
             .add_sized([step, step], egui::Button::new("◀"))
-            .on_hover_text("The year before")
+            .on_hover_text(t!("reports.year_before"))
             .clicked()
         {
             app.reports.year -= 1;
@@ -130,12 +121,12 @@ fn year_row(app: &mut App, ui: &mut Ui) {
         );
         if ui
             .add_sized([step, step], egui::Button::new("▶"))
-            .on_hover_text("The year after")
+            .on_hover_text(t!("reports.year_after"))
             .clicked()
         {
             app.reports.year += 1;
         }
-        if app.reports.year != app.year && ui.button("This year").clicked() {
+        if app.reports.year != app.year && ui.button(t!("reports.this_year")).clicked() {
             app.reports.year = app.year;
         }
     });
@@ -146,22 +137,16 @@ fn summary(app: &App, ui: &mut Ui) {
         return;
     };
     let locale = &app.locale;
+    // Two counts in one sentence, and how each is worded is its own language's
+    // business — so each is built as a counted message of its own and dropped
+    // into the sentence as a value. They are the same two the reports
+    // themselves use, so the pane and the file it writes agree.
     ui.label(
-        RichText::new(format!(
-            "{} across {} {} in {} {}",
-            locale.format_money(report.total_minor),
-            report.entries.len(),
-            if report.entries.len() == 1 {
-                "entry"
-            } else {
-                "entries"
-            },
-            report.categories.len(),
-            if report.categories.len() == 1 {
-                "category"
-            } else {
-                "categories"
-            },
+        RichText::new(t!(
+            "reports.summary",
+            total = locale.format_money(report.total_minor),
+            entries = tn!("report.entry_count", report.entries.len() as u64),
+            categories = tn!("report.category_count", report.categories.len() as u64),
         ))
         .size(16.0),
     );
@@ -209,7 +194,7 @@ fn refresh(app: &mut App) {
         }
         Err(err) => {
             app.reports.report = None;
-            app.reports.error = Some(format!("Could not read the figures: {err}"));
+            app.reports.error = Some(t!("reports.unreadable", error = err));
         }
     }
     app.reports.built_for = Some(wanted);
@@ -217,7 +202,7 @@ fn refresh(app: &mut App) {
 
 fn write_report(app: &mut App) {
     let Some(report) = &app.reports.report else {
-        return app.report_error("There is no database to report on.");
+        return app.report_error(t!("reports.no_database"));
     };
 
     let format = app.reports.format;
@@ -231,7 +216,7 @@ fn write_report(app: &mut App) {
 
     let folder = std::path::PathBuf::from(app.reports.folder.trim());
     if folder.as_os_str().is_empty() {
-        let message = "Say which folder to save into.".to_owned();
+        let message = t!("reports.say_which_folder");
         app.reports.error = Some(message.clone());
         return app.report_error(message);
     }
@@ -242,15 +227,19 @@ fn write_report(app: &mut App) {
 
     if let Err(err) = std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&path, &bytes))
     {
-        let message = format!("Could not write {}: {err}", path.display());
+        let message = t!(
+            "reports.could_not_write",
+            path = path.display(),
+            error = err
+        );
         app.reports.error = Some(message.clone());
         return app.report_error(message);
     }
 
     app.reports.error = None;
-    app.report_ok(format!(
-        "Saved {} to {}",
-        format.label(),
-        crate::config::tilde(&path)
+    app.report_ok(t!(
+        "status.report_saved",
+        format = format.label(),
+        path = crate::config::tilde(&path)
     ));
 }

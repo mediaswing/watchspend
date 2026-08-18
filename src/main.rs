@@ -20,8 +20,10 @@ mod app;
 mod audio;
 mod config;
 mod db;
+mod i18n;
 mod locale;
 mod report;
+mod theme;
 mod ui;
 mod update;
 

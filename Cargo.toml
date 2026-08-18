@@ -35,5 +35,14 @@ log = "0.4.33"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 ureq = { version = "3.4.0", default-features = false, features = ["rustls"] }
 
+[dev-dependencies]
+# Only to ask a font file whether it has a glyph for a character, which is how
+# the language files are checked for characters the bundled font cannot draw —
+# see `i18n`. egui's own `Fonts::has_glyph` cannot answer this: it reports false
+# for every character that happens to live in the same face as the replacement
+# glyph, which is most of the arrows and symbols in the app's own labels.
+# Already in the tree via `egui`, so naming it here costs no extra build.
+ab_glyph = "0.2"
+
 [profile.release]
 opt-level = 2

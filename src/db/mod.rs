@@ -11,6 +11,8 @@ pub mod sqlite;
 
 use chrono::NaiveDate;
 
+use crate::t;
+
 /// A category and what has gone into it so far this year.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CategoryTotal {
@@ -112,12 +114,10 @@ pub trait Store: Send {
 pub(crate) fn clean_category_name(name: &str) -> Result<String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(Error::Rejected("Give the category a name.".to_owned()));
+        return Err(Error::Rejected(t!("category.needs_a_name")));
     }
     if name.chars().count() > 64 {
-        return Err(Error::Rejected(
-            "That name is too long — 64 characters at most.".to_owned(),
-        ));
+        return Err(Error::Rejected(t!("category.name_too_long")));
     }
     Ok(name.to_owned())
 }

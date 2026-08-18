@@ -8,6 +8,7 @@ use mysql::{Conn, OptsBuilder, SslOpts, params};
 use serde::{Deserialize, Serialize};
 
 use super::{CategoryTotal, Error, NewSpend, Result, SpendEntry, Store, clean_category_name};
+use crate::t;
 
 /// How long to wait on a server that is not answering. Short enough that a
 /// wrong hostname is a mistake you notice, rather than a frozen window.
@@ -60,13 +61,13 @@ impl Default for MariaDbSettings {
 impl MariaDbSettings {
     fn opts(&self) -> Result<OptsBuilder> {
         if self.host.trim().is_empty() {
-            return Err(Error::Rejected("Enter the server's host name.".to_owned()));
+            return Err(Error::Rejected(t!("database.needs_host")));
         }
         if self.database.trim().is_empty() {
-            return Err(Error::Rejected("Enter the database name.".to_owned()));
+            return Err(Error::Rejected(t!("database.needs_name")));
         }
         if self.username.trim().is_empty() {
-            return Err(Error::Rejected("Enter the user name.".to_owned()));
+            return Err(Error::Rejected(t!("database.needs_user")));
         }
 
         let ssl = self.use_tls.then(|| {
@@ -275,9 +276,8 @@ impl Store for MariaDbStore {
             .map(|(id, date, category, amount_minor, description)| {
                 Ok(SpendEntry {
                     id,
-                    spent_on: chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(
-                        |_| Error::Backend(format!("A stored date is not a date: {date:?}")),
-                    )?,
+                    spent_on: chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+                        .map_err(|_| Error::Backend(t!("database.bad_stored_date", date = date)))?,
                     category,
                     amount_minor,
                     description,
@@ -289,7 +289,7 @@ impl Store for MariaDbStore {
     fn add_category(&mut self, name: &str) -> Result<()> {
         let name = clean_category_name(name)?;
         if self.category_id(&name)?.is_some() {
-            return Err(Error::Rejected(format!("“{name}” is already a category.")));
+            return Err(Error::Rejected(t!("category.already_exists", name = name)));
         }
         self.conn
             .exec_drop(
@@ -301,9 +301,9 @@ impl Store for MariaDbStore {
     }
 
     fn add_spend(&mut self, spend: &NewSpend) -> Result<()> {
-        let category_id = self.category_id(&spend.category)?.ok_or_else(|| {
-            Error::Rejected(format!("There is no category called “{}”.", spend.category))
-        })?;
+        let category_id = self
+            .category_id(&spend.category)?
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = spend.category)))?;
         self.conn
             .exec_drop(
                 "INSERT INTO spending
@@ -323,9 +323,9 @@ impl Store for MariaDbStore {
     }
 
     fn update_spend(&mut self, id: i64, spend: &NewSpend) -> Result<()> {
-        let category_id = self.category_id(&spend.category)?.ok_or_else(|| {
-            Error::Rejected(format!("There is no category called “{}”.", spend.category))
-        })?;
+        let category_id = self
+            .category_id(&spend.category)?
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = spend.category)))?;
         self.conn
             .exec_drop(
                 "UPDATE spending
@@ -361,12 +361,13 @@ impl Store for MariaDbStore {
         let new_name = clean_category_name(new_name)?;
         let id = self
             .category_id(old_name)?
-            .ok_or_else(|| Error::Rejected(format!("There is no category called “{old_name}”.")))?;
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = old_name)))?;
         if let Some(existing) = self.category_id(&new_name)?
             && existing != id
         {
-            return Err(Error::Rejected(format!(
-                "“{new_name}” is already a category."
+            return Err(Error::Rejected(t!(
+                "category.already_exists",
+                name = new_name
             )));
         }
         self.conn
@@ -381,7 +382,7 @@ impl Store for MariaDbStore {
     fn delete_category(&mut self, name: &str) -> Result<()> {
         let id = self
             .category_id(name)?
-            .ok_or_else(|| Error::Rejected(format!("There is no category called “{name}”.")))?;
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = name)))?;
         self.conn
             .exec_drop(
                 "DELETE FROM categories WHERE id = :id AND owner = :owner",
@@ -401,7 +402,7 @@ impl Store for MariaDbStore {
 /// nothing worth leaking either way.
 fn not_found_unless_changed(changed: u64) -> Result<()> {
     if changed == 0 {
-        return Err(Error::Rejected("That entry no longer exists.".to_owned()));
+        return Err(Error::Rejected(t!("entry.no_longer_exists")));
     }
     Ok(())
 }
@@ -414,9 +415,7 @@ fn category_delete_error(name: &str, e: mysql::Error) -> Error {
     if let mysql::Error::MySqlError(inner) = &e
         && inner.code == 1451
     {
-        return Error::Rejected(format!(
-            "“{name}” still has spending entries — delete or move them first."
-        ));
+        return Error::Rejected(t!("category.has_entries", name = name));
     }
     backend(e)
 }

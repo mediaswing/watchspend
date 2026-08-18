@@ -6,7 +6,7 @@ use egui::{RichText, Ui};
 use crate::app::App;
 use crate::db::NewSpend;
 use crate::locale::Locale;
-use crate::ui;
+use crate::{t, ui};
 
 #[derive(Default)]
 pub struct State {
@@ -28,12 +28,12 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     let currency = app.locale.currency;
     ui::pane_header(
         ui,
-        "Spending",
-        &format!(
-            "Amounts in {} ({}); dates as {}",
-            currency.code,
-            currency.symbol,
-            app.locale.date_hint()
+        &t!("spending.title"),
+        &t!(
+            "spending.subtitle",
+            code = currency.code,
+            symbol = currency.symbol,
+            format = app.locale.date_hint(),
         ),
     );
 
@@ -45,13 +45,13 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         let state = &mut app.spending;
 
-        ui::labelled_field(ui, "Date", &mut state.date, &date_hint);
+        ui::labelled_field(ui, &t!("spending.date"), &mut state.date, &date_hint);
 
-        ui.label(RichText::new("Category").size(13.0));
+        ui.label(RichText::new(t!("spending.category")).size(13.0));
         let selected = state
             .category
             .clone()
-            .unwrap_or_else(|| "Choose a category…".to_owned());
+            .unwrap_or_else(|| t!("spending.choose_category"));
         egui::ComboBox::from_id_salt("spending-category")
             .selected_text(selected)
             // The arrow and the frame's padding sit outside the width egui is
@@ -60,7 +60,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             .width(ui.available_width() - 10.0)
             .show_ui(ui, |ui| {
                 if categories.is_empty() {
-                    ui.label(RichText::new("No categories yet").weak());
+                    ui.label(RichText::new(t!("spending.no_categories_yet")).weak());
                 }
                 for name in &categories {
                     ui.selectable_value(&mut state.category, Some(name.clone()), name);
@@ -70,16 +70,16 @@ pub fn show(app: &mut App, ui: &mut Ui) {
 
         ui::labelled_field(
             ui,
-            &format!("Amount ({})", currency.symbol),
+            &t!("spending.amount", symbol = currency.symbol),
             &mut state.amount,
             &amount_hint,
         );
 
         ui::labelled_field(
             ui,
-            "Description (optional)",
+            &t!("spending.description"),
             &mut state.description,
-            "What was it for?",
+            &t!("spending.description_hint"),
         );
 
         if let Some(error) = &state.error {
@@ -88,12 +88,12 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         }
 
         ui.add_space(6.0);
-        submit = ui::wide_button(ui, "Record Spending").clicked();
+        submit = ui::wide_button(ui, &t!("spending.record")).clicked();
 
         if categories.is_empty() {
             ui.add_space(8.0);
             ui.label(
-                RichText::new("Add a category first — spending has to go somewhere.")
+                RichText::new(t!("spending.add_a_category_first"))
                     .size(13.0)
                     .weak(),
             );
@@ -117,9 +117,7 @@ fn record(app: &mut App) {
 
     let result = match app.store.as_mut() {
         Some(store) => store.add_spend(&spend),
-        None => Err(crate::db::Error::Rejected(
-            "No database is connected.".to_owned(),
-        )),
+        None => Err(crate::db::Error::Rejected(t!("common.no_database"))),
     };
 
     match result {
@@ -137,9 +135,14 @@ fn record(app: &mut App) {
             // only shows this one, so an entry dated 2025 by a slip of the
             // keyboard would otherwise look as though it had not saved at all.
             app.report_ok(if year == app.year {
-                format!("Recorded {amount} in {category}.")
+                t!("status.recorded", amount = amount, category = category)
             } else {
-                format!("Recorded {amount} in {category}, dated {year}.")
+                t!(
+                    "status.recorded_other_year",
+                    amount = amount,
+                    category = category,
+                    year = year
+                )
             });
         }
         Err(err) => {
@@ -175,12 +178,12 @@ pub(super) fn spend_from_fields(
     description: &str,
 ) -> Result<NewSpend, String> {
     let spent_on = locale.parse_date(date)?;
-    let category = category.ok_or_else(|| "Choose a category.".to_owned())?;
+    let category = category.ok_or_else(|| t!("spending.choose_a_category"))?;
     let amount_minor = locale.parse_money(amount)?;
 
     let description = description.trim();
     if description.chars().count() > 255 {
-        return Err("That description is too long — 255 characters at most.".to_owned());
+        return Err(t!("spending.description_too_long"));
     }
 
     Ok(NewSpend {

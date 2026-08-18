@@ -16,6 +16,7 @@ use tokio::runtime::Runtime;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt as _};
 
 use super::{CategoryTotal, Error, NewSpend, Result, SpendEntry, Store, clean_category_name};
+use crate::t;
 
 /// How long to wait on a server that is not answering, same as
 /// [`super::mariadb::CONNECT_TIMEOUT`]. A closed port fails fast on its own;
@@ -63,13 +64,13 @@ impl Default for MsSqlSettings {
 impl MsSqlSettings {
     fn config(&self) -> Result<Config> {
         if self.host.trim().is_empty() {
-            return Err(Error::Rejected("Enter the server's host name.".to_owned()));
+            return Err(Error::Rejected(t!("database.needs_host")));
         }
         if self.database.trim().is_empty() {
-            return Err(Error::Rejected("Enter the database name.".to_owned()));
+            return Err(Error::Rejected(t!("database.needs_name")));
         }
         if self.username.trim().is_empty() {
-            return Err(Error::Rejected("Enter the user name.".to_owned()));
+            return Err(Error::Rejected(t!("database.needs_user")));
         }
 
         let mut config = Config::new();
@@ -114,12 +115,12 @@ impl MsSqlStore {
             .enable_io()
             .enable_time()
             .build()
-            .map_err(|e| Error::Backend(format!("Could not start a connection thread: {e}")))?;
+            .map_err(|e| Error::Backend(t!("database.could_not_start", error = e)))?;
 
         let client = rt.block_on(async move {
             let tcp = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(config.get_addr()))
                 .await
-                .map_err(|_| Error::Backend("Timed out connecting to the server.".to_owned()))?
+                .map_err(|_| Error::Backend(t!("database.timed_out")))?
                 .map_err(backend_io)?;
             tcp.set_nodelay(true).map_err(backend_io)?;
             Client::connect(config, tcp.compat_write())
@@ -394,7 +395,7 @@ impl Store for MsSqlStore {
     fn add_category(&mut self, name: &str) -> Result<()> {
         let name = clean_category_name(name)?;
         if self.category_id(&name)?.is_some() {
-            return Err(Error::Rejected(format!("“{name}” is already a category.")));
+            return Err(Error::Rejected(t!("category.already_exists", name = name)));
         }
         let client = &mut self.client;
         let owner = self.owner.as_str();
@@ -411,9 +412,9 @@ impl Store for MsSqlStore {
     }
 
     fn add_spend(&mut self, spend: &NewSpend) -> Result<()> {
-        let category_id = self.category_id(&spend.category)?.ok_or_else(|| {
-            Error::Rejected(format!("There is no category called “{}”.", spend.category))
-        })?;
+        let category_id = self
+            .category_id(&spend.category)?
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = spend.category)))?;
         let client = &mut self.client;
         let owner = self.owner.as_str();
         self.rt.block_on(async move {
@@ -438,9 +439,9 @@ impl Store for MsSqlStore {
     }
 
     fn update_spend(&mut self, id: i64, spend: &NewSpend) -> Result<()> {
-        let category_id = self.category_id(&spend.category)?.ok_or_else(|| {
-            Error::Rejected(format!("There is no category called “{}”.", spend.category))
-        })?;
+        let category_id = self
+            .category_id(&spend.category)?
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = spend.category)))?;
         let client = &mut self.client;
         let owner = self.owner.as_str();
         let changed = self.rt.block_on(async move {
@@ -485,12 +486,13 @@ impl Store for MsSqlStore {
         let new_name = clean_category_name(new_name)?;
         let id = self
             .category_id(old_name)?
-            .ok_or_else(|| Error::Rejected(format!("There is no category called “{old_name}”.")))?;
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = old_name)))?;
         if let Some(existing) = self.category_id(&new_name)?
             && existing != id
         {
-            return Err(Error::Rejected(format!(
-                "“{new_name}” is already a category."
+            return Err(Error::Rejected(t!(
+                "category.already_exists",
+                name = new_name
             )));
         }
         let client = &mut self.client;
@@ -510,7 +512,7 @@ impl Store for MsSqlStore {
     fn delete_category(&mut self, name: &str) -> Result<()> {
         let id = self
             .category_id(name)?
-            .ok_or_else(|| Error::Rejected(format!("There is no category called “{name}”.")))?;
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = name)))?;
         let client = &mut self.client;
         let owner = self.owner.as_str();
         self.rt.block_on(async move {
@@ -535,7 +537,7 @@ impl Store for MsSqlStore {
 /// nothing worth leaking either way.
 fn not_found_unless_changed(result: &tiberius::ExecuteResult) -> Result<()> {
     if result.rows_affected().iter().sum::<u64>() == 0 {
-        return Err(Error::Rejected("That entry no longer exists.".to_owned()));
+        return Err(Error::Rejected(t!("entry.no_longer_exists")));
     }
     Ok(())
 }
@@ -549,9 +551,7 @@ fn category_delete_error(name: &str, e: tiberius::error::Error) -> Error {
     if let tiberius::error::Error::Server(token) = &e
         && token.code() == 547
     {
-        return Error::Rejected(format!(
-            "“{name}” still has spending entries — delete or move them first."
-        ));
+        return Error::Rejected(t!("category.has_entries", name = name));
     }
     backend(e)
 }

@@ -1,4 +1,5 @@
-//! Where the app remembers which database to use, between runs.
+//! Where the app remembers which database to use, and how it presents itself,
+//! between runs.
 
 use std::path::{Path, PathBuf};
 
@@ -6,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::mariadb::MariaDbSettings;
 use crate::db::mssql::MsSqlSettings;
+use crate::t;
 
 /// Which backend the user chose on the Database tab.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,9 +18,55 @@ pub enum Backend {
     MsSql,
 }
 
+/// Light, dark, or whatever this computer is set to.
+///
+/// `System` stays the default, because following the machine is right for most
+/// people and it is what every previous version did. The other two are there
+/// because "change your whole desktop" is not a reasonable thing to ask of
+/// somebody who wants one window dimmer: light sensitivity and glare are
+/// ordinary reasons to want a dark window on a light desktop, and wanting a
+/// light window because low-contrast dark themes are harder to read is just as
+/// ordinary.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    pub const ALL: [Self; 3] = [Self::System, Self::Light, Self::Dark];
+
+    pub fn label(self) -> String {
+        match self {
+            Self::System => t!("appearance.system.label"),
+            Self::Light => t!("appearance.light.label"),
+            Self::Dark => t!("appearance.dark.label"),
+        }
+    }
+
+    pub fn description(self) -> String {
+        match self {
+            Self::System => t!("appearance.system.description"),
+            Self::Light => t!("appearance.light.description"),
+            Self::Dark => t!("appearance.dark.description"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    /// The language the interface is written in: a code like `fr`, or `auto`
+    /// to follow the operating system. See [`crate::i18n`].
+    #[serde(default = "auto_language")]
+    pub language: String,
+
+    /// Light, dark, or whatever this computer is set to. See [`Appearance`].
+    pub appearance: Appearance,
+
     pub backend: Backend,
     /// `None` means the default file in the app's data directory.
     pub sqlite_path: Option<PathBuf>,
@@ -44,9 +92,19 @@ fn yes() -> bool {
     true
 }
 
+/// `serde`'s default for a `String` is empty, and an empty language setting
+/// would be one the user never chose. Absent means "follow the computer",
+/// which is what a config file written by an earlier version says by saying
+/// nothing.
+fn auto_language() -> String {
+    crate::i18n::AUTO.to_owned()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
+            language: auto_language(),
+            appearance: Appearance::default(),
             backend: Backend::default(),
             sqlite_path: None,
             mariadb: MariaDbSettings::default(),
@@ -123,7 +181,7 @@ impl Config {
 /// `~/Library/Application Support/GenericAccountingSystem` on macOS, the
 /// equivalent elsewhere, and the current directory if the platform will not
 /// say — an app that cannot find a home directory should still start.
-fn data_dir() -> PathBuf {
+pub fn data_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("GenericAccountingSystem")

@@ -3,18 +3,16 @@
 
 use chrono::{Datelike as _, Local};
 use eframe::CreationContext;
-use egui::{Align, FontFamily, FontId, Layout, RichText, TextStyle};
+use egui::{Align, Layout, RichText};
 
 use crate::audio::Sounds;
 use crate::config::{Backend, Config};
 use crate::db::attempt::{Attempt, Purpose, Target};
 use crate::db::{CategoryTotal, SpendEntry, Store};
 use crate::locale::Locale;
+use crate::t;
 use crate::ui;
 use crate::update::{self, Update};
-
-/// The bold face the whole interface is set in.
-const UBUNTU_BOLD: &[u8] = include_bytes!("../assets/fonts/Ubuntu-Bold.ttf");
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
@@ -23,24 +21,27 @@ pub enum Tab {
     Entries,
     Reports,
     Database,
+    Settings,
 }
 
 impl Tab {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::Categories,
         Self::Spending,
         Self::Entries,
         Self::Reports,
         Self::Database,
+        Self::Settings,
     ];
 
-    pub fn title(self) -> &'static str {
+    pub fn title(self) -> String {
         match self {
-            Self::Categories => "Categories",
-            Self::Spending => "Spending",
-            Self::Entries => "Entries",
-            Self::Reports => "Reports",
-            Self::Database => "Database",
+            Self::Categories => t!("tab.categories"),
+            Self::Spending => t!("tab.spending"),
+            Self::Entries => t!("tab.entries"),
+            Self::Reports => t!("tab.reports"),
+            Self::Database => t!("tab.database"),
+            Self::Settings => t!("tab.settings"),
         }
     }
 }
@@ -86,9 +87,14 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &CreationContext<'_>) -> Self {
-        install_fonts_and_style(&cc.egui_ctx);
-
         let config = Config::load();
+        // Before anything reads a word of the interface: the panes below are
+        // built with their labels already in them, and the connection failure
+        // that may be reported a few lines later is a sentence.
+        crate::i18n::apply_setting(&config.language);
+        crate::theme::apply(&cc.egui_ctx);
+        crate::theme::apply_appearance(&cc.egui_ctx, config.appearance);
+
         let locale = Locale::detect();
         let database = ui::database::State::from_config(&config);
 
@@ -140,7 +146,7 @@ impl App {
 
         if target.is_slow() {
             self.status = Some(Status {
-                message: format!("Connecting to {}…", target.label()),
+                message: t!("status.connecting", target = target.label()),
                 good: true,
             });
             self.connection = Some(self.start_connection(target, Purpose::Adopt));
@@ -202,7 +208,7 @@ impl App {
                 self.foreign_entries = 0;
                 self.entries.clear();
                 self.status = Some(Status {
-                    message: format!("Could not read the categories: {err}"),
+                    message: t!("status.categories_unreadable", error = err),
                     good: false,
                 });
             }
@@ -272,7 +278,7 @@ impl App {
                 let where_it_is = self
                     .store
                     .as_ref()
-                    .map_or_else(|| "No database".to_owned(), |s| s.describe());
+                    .map_or_else(|| t!("status.no_database"), |s| s.describe());
                 ui.add(egui::Label::new(RichText::new(where_it_is).size(12.0).weak()).truncate());
             },
             |ui| {
@@ -337,58 +343,9 @@ impl eframe::App for App {
             Tab::Entries => ui::entries::show(self, ui),
             Tab::Reports => ui::reports::show(self, ui),
             Tab::Database => ui::database::show(self, ui),
+            Tab::Settings => ui::settings::show(self, ui),
         });
 
         ui::update_box::show(self, &ui.ctx().clone());
     }
-}
-
-/// Use the bold Ubuntu face from `assets/` throughout, and give everything a
-/// little more room than egui's defaults, which are tuned for dense tools
-/// rather than for forms someone types money into.
-fn install_fonts_and_style(ctx: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert(
-        "ubuntu-bold".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(UBUNTU_BOLD)),
-    );
-    fonts
-        .families
-        .entry(FontFamily::Proportional)
-        .or_default()
-        .insert(0, "ubuntu-bold".to_owned());
-    fonts
-        .families
-        .entry(FontFamily::Monospace)
-        .or_default()
-        .push("ubuntu-bold".to_owned());
-    ctx.set_fonts(fonts);
-
-    // Applied to both themes, since the window follows whichever the system
-    // is set to.
-    ctx.all_styles_mut(|style| {
-        style.text_styles = [
-            (
-                TextStyle::Heading,
-                FontId::new(24.0, FontFamily::Proportional),
-            ),
-            (TextStyle::Body, FontId::new(15.0, FontFamily::Proportional)),
-            (
-                TextStyle::Button,
-                FontId::new(15.0, FontFamily::Proportional),
-            ),
-            (
-                TextStyle::Small,
-                FontId::new(12.0, FontFamily::Proportional),
-            ),
-            (
-                TextStyle::Monospace,
-                FontId::new(14.0, FontFamily::Monospace),
-            ),
-        ]
-        .into();
-        style.spacing.item_spacing = egui::vec2(8.0, 8.0);
-        style.spacing.button_padding = egui::vec2(10.0, 6.0);
-        style.spacing.interact_size.y = 28.0;
-    });
 }

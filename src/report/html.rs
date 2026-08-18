@@ -6,12 +6,20 @@
 
 use super::{Report, Sections, escape_markup, share};
 use crate::locale::Locale;
+use crate::{i18n, t, tn};
 
 pub fn render(report: &Report, locale: &Locale, sections: Sections) -> Vec<u8> {
     let mut out = String::with_capacity(4096);
-    let title = format!("Spending report {}", report.year);
+    let title = t!("report.title", year = report.year);
 
-    out.push_str("<!doctype html>\n<html lang=\"en\">\n<head>\n");
+    // The page says which language it is in, so a screen reader picks the right
+    // voice for it and a browser offers the right translation — which it cannot
+    // work out from the text, and would otherwise get wrong for every reader of
+    // a French report.
+    out.push_str(&format!(
+        "<!doctype html>\n<html lang=\"{}\">\n<head>\n",
+        escape_markup(&i18n::current_code())
+    ));
     out.push_str("<meta charset=\"utf-8\"/>\n");
     out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n");
     out.push_str(&format!("<title>{}</title>\n", escape_markup(&title)));
@@ -20,29 +28,24 @@ pub fn render(report: &Report, locale: &Locale, sections: Sections) -> Vec<u8> {
 
     out.push_str(&format!("<h1>{}</h1>\n", escape_markup(&title)));
     out.push_str(&format!(
-        "<p class=\"meta\">Generated {} · {} · {} {} in {} {}</p>\n",
-        escape_markup(&locale.format_date(report.generated)),
-        escape_markup(locale.currency.code),
-        report.entries.len(),
-        if report.entries.len() == 1 {
-            "entry"
-        } else {
-            "entries"
-        },
-        report.categories.len(),
-        if report.categories.len() == 1 {
-            "category"
-        } else {
-            "categories"
-        },
+        "<p class=\"meta\">{}</p>\n",
+        escape_markup(&meta(report, locale))
     ));
     out.push_str(&format!(
-        "<p class=\"total\">Total spent: <strong>{}</strong></p>\n",
+        "<p class=\"total\">{} <strong>{}</strong></p>\n",
+        escape_markup(&t!("report.total_spent")),
         escape_markup(&locale.format_money(report.total_minor))
     ));
 
-    out.push_str("<h2>By category</h2>\n<table>\n<thead><tr><th>Category</th>\
-         <th class=\"n\">Entries</th><th class=\"n\">Total</th><th class=\"n\">Share</th></tr></thead>\n<tbody>\n");
+    out.push_str(&format!(
+        "<h2>{}</h2>\n<table>\n<thead><tr><th>{}</th>\
+         <th class=\"n\">{}</th><th class=\"n\">{}</th><th class=\"n\">{}</th></tr></thead>\n<tbody>\n",
+        escape_markup(&t!("report.by_category")),
+        escape_markup(&t!("report.column.category")),
+        escape_markup(&t!("report.column.entries")),
+        escape_markup(&t!("report.column.total")),
+        escape_markup(&t!("report.column.share")),
+    ));
     for line in &report.categories {
         out.push_str(&format!(
             "<tr><td>{}</td><td class=\"n\">{}</td><td class=\"n\">{}</td><td class=\"n\">{}</td></tr>\n",
@@ -53,16 +56,23 @@ pub fn render(report: &Report, locale: &Locale, sections: Sections) -> Vec<u8> {
         ));
     }
     out.push_str(&format!(
-        "</tbody>\n<tfoot><tr><th>Total</th><th class=\"n\">{}</th><th class=\"n\">{}</th><th class=\"n\"></th></tr></tfoot>\n</table>\n",
+        "</tbody>\n<tfoot><tr><th>{}</th><th class=\"n\">{}</th><th class=\"n\">{}</th><th class=\"n\"></th></tr></tfoot>\n</table>\n",
+        escape_markup(&t!("report.column.total")),
         report.entries.len(),
         escape_markup(&locale.format_money(report.total_minor)),
     ));
 
     if sections.monthly {
-        out.push_str("<h2>By month</h2>\n<table>\n<thead><tr><th>Month</th><th class=\"n\">Total</th></tr></thead>\n<tbody>\n");
+        out.push_str(&format!(
+            "<h2>{}</h2>\n<table>\n<thead><tr><th>{}</th><th class=\"n\">{}</th></tr></thead>\n<tbody>\n",
+            escape_markup(&t!("report.by_month")),
+            escape_markup(&t!("report.column.month")),
+            escape_markup(&t!("report.column.total")),
+        ));
         for (name, total) in report.months_with_spending() {
             out.push_str(&format!(
-                "<tr><td>{name}</td><td class=\"n\">{}</td></tr>\n",
+                "<tr><td>{}</td><td class=\"n\">{}</td></tr>\n",
+                escape_markup(&name),
                 escape_markup(&locale.format_money(total))
             ));
         }
@@ -70,10 +80,15 @@ pub fn render(report: &Report, locale: &Locale, sections: Sections) -> Vec<u8> {
     }
 
     if sections.entries {
-        out.push_str(
-            "<h2>Entries</h2>\n<table>\n<thead><tr><th>Date</th><th>Category</th>\
-             <th class=\"n\">Amount</th><th>Description</th></tr></thead>\n<tbody>\n",
-        );
+        out.push_str(&format!(
+            "<h2>{}</h2>\n<table>\n<thead><tr><th>{}</th><th>{}</th>\
+             <th class=\"n\">{}</th><th>{}</th></tr></thead>\n<tbody>\n",
+            escape_markup(&t!("report.column.entries")),
+            escape_markup(&t!("report.column.date")),
+            escape_markup(&t!("report.column.category")),
+            escape_markup(&t!("report.column.amount")),
+            escape_markup(&t!("report.column.description")),
+        ));
         for entry in &report.entries {
             out.push_str(&format!(
                 "<tr><td>{}</td><td>{}</td><td class=\"n\">{}</td><td>{}</td></tr>\n",
@@ -88,6 +103,20 @@ pub fn render(report: &Report, locale: &Locale, sections: Sections) -> Vec<u8> {
 
     out.push_str("<p class=\"foot\">Generic Accounting System</p>\n</body>\n</html>\n");
     out.into_bytes()
+}
+
+/// The line under the heading, shared with the Word writer so the two documents
+/// say the same thing. Each of the two counts is a counted message in its own
+/// right, because how a language words "one category" is that language's
+/// business and not something a sentence built around it should decide.
+pub(super) fn meta(report: &Report, locale: &Locale) -> String {
+    t!(
+        "report.meta",
+        date = locale.format_date(report.generated),
+        code = locale.currency.code,
+        entries = tn!("report.entry_count", report.entries.len() as u64),
+        categories = tn!("report.category_count", report.categories.len() as u64),
+    )
 }
 
 /// Readable on screen, sane on paper, and legible in either colour scheme —

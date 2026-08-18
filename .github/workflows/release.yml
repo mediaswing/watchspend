@@ -14,6 +14,11 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Two platforms rather than three: the Linux binary is no longer published,
+  # since a single dynamically linked build cannot suit the distributions people
+  # actually run, and building from source there is one command. CI still
+  # compiles and tests on Linux for every commit, so nothing about dropping the
+  # download stops the app working there.
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -21,10 +26,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Ubuntu
-            os: ubuntu-latest
-            target: linux-x86_64
-            binary: generic-accounting-system
           - name: macOS (Apple silicon)
             os: macos-latest
             target: macos-aarch64
@@ -43,19 +44,6 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Install build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            libasound2-dev \
-            libwayland-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libxkbcommon-x11-dev
-
       # The tests ran on this commit in CI, but a release is worth the two
       # minutes: a binary nobody tested is not a release, it is a guess.
       - name: Test
@@ -72,6 +60,10 @@ jobs:
           name="generic-accounting-system-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir "$name"
           cp "target/release/${{ matrix.binary }}" LICENSE README.md "$name/"
+          # The reference language file travels too: Settings tells a translator
+          # to copy one and translate it, and somebody who downloaded a binary
+          # has no source tree to copy it from.
+          cp -R assets/lang "$name/languages"
           tar czf "$name.tar.gz" "$name"
 
       - name: Package (zip)
@@ -81,6 +73,8 @@ jobs:
           $name = "generic-accounting-system-$env:GITHUB_REF_NAME-${{ matrix.target }}"
           New-Item -ItemType Directory -Path $name | Out-Null
           Copy-Item "target/release/${{ matrix.binary }}", LICENSE, README.md $name
+          # See the note on the tar.gz step above.
+          Copy-Item -Recurse assets/lang "$name/languages"
           Compress-Archive -Path $name -DestinationPath "$name.zip"
 
       - uses: actions/upload-artifact@v7
@@ -124,12 +118,16 @@ jobs:
 
           | Download | For |
           | --- | --- |
-          | `…-linux-x86_64.tar.gz` | Linux on x86-64 |
           | `…-macos-aarch64.tar.gz` | macOS on Apple silicon |
           | `…-windows-x86_64.zip` | Windows on x86-64 |
 
-          Each archive holds the binary, the licence and the README.
-          `SHA256SUMS` covers all three.
+          Each archive holds the binary, the licence, the README, and a
+          `languages/` folder with the shipped language files to translate from.
+          `SHA256SUMS` covers both.
+
+          There is no Linux download. The app still builds and is tested on
+          Linux on every commit — `cargo build --release` on a machine with the
+          ALSA, Wayland/X11 and xkbcommon development packages is all it takes.
 
           These binaries are not code-signed. macOS will quarantine a
           downloaded one; clear it with

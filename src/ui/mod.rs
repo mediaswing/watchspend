@@ -1,13 +1,16 @@
-//! The four panes, and the few widget helpers they share.
+//! The six panes, and the few widget helpers they share.
 
 pub mod categories;
 pub mod database;
 pub mod entries;
 pub mod reports;
+pub mod settings;
 pub mod spending;
 pub mod update_box;
 
 use egui::{Atom, Color32, Id, Response, RichText, Ui, Widget as _};
+
+use crate::t;
 
 /// Height of the buttons that span a whole pane.
 const WIDE_BUTTON_HEIGHT: f32 = 40.0;
@@ -57,25 +60,18 @@ pub fn labelled_password(ui: &mut Ui, label: &str, value: &mut String) -> Respon
 /// Green for something that worked, dark enough to read on a light background
 /// and light enough to read on a dark one.
 ///
-/// The window follows whatever theme the system is set to, so a single colour
-/// cannot serve both: the dark greens and reds that look right on white fall
-/// to around 2.5:1 against a dark background, which is below any reasonable
-/// contrast floor and unreadable for some people outright.
+/// A single colour cannot serve both themes: the dark greens and reds that
+/// look right on white fall to around 2.5:1 against a dark background, which is
+/// below any reasonable contrast floor and unreadable for some people outright.
+/// Both live in [`crate::theme`] now, beside the surfaces they were measured
+/// against.
 pub fn good_colour(ui: &Ui) -> Color32 {
-    if ui.visuals().dark_mode {
-        Color32::from_rgb(0x81, 0xc9, 0x84)
-    } else {
-        Color32::from_rgb(0x1b, 0x5e, 0x20)
-    }
+    crate::theme::palette(ui.visuals()).ok
 }
 
 /// Red for something that did not, chosen the same way.
 pub fn bad_colour(ui: &Ui) -> Color32 {
-    if ui.visuals().dark_mode {
-        Color32::from_rgb(0xff, 0x8a, 0x80)
-    } else {
-        Color32::from_rgb(0xb7, 0x1c, 0x1c)
-    }
+    crate::theme::palette(ui.visuals()).bad
 }
 
 pub fn error_text(ui: &mut Ui, message: &str) {
@@ -111,7 +107,10 @@ pub fn confirm_modal(
         ui.horizontal(|ui| {
             let width = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
             if ui
-                .add_sized([width, 36.0], egui::Button::new(centred("Cancel")))
+                .add_sized(
+                    [width, 36.0],
+                    egui::Button::new(centred(t!("common.cancel"))),
+                )
                 .clicked()
             {
                 cancel = true;

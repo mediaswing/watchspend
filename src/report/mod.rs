@@ -13,6 +13,7 @@ use chrono::{Datelike as _, Local, NaiveDate};
 
 use crate::db::SpendEntry;
 use crate::locale::Locale;
+use crate::t;
 
 /// What a report can be written as.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -49,12 +50,16 @@ impl Format {
     }
 
     /// A line of prose for the pane, so the choice is not four bare acronyms.
-    pub fn detail(self) -> &'static str {
+    ///
+    /// The labels above stay as they are: `CSV`, `HTML` and `JSON` are the same
+    /// three letters in every language, and `Word` is what the program is
+    /// called. Only the sentence explaining each one is worth translating.
+    pub fn detail(self) -> String {
         match self {
-            Self::Csv => "Columns for a spreadsheet: Excel, Numbers, LibreOffice.",
-            Self::Docx => "A Word document, with the tables laid out for reading.",
-            Self::Html => "A page for the browser, and printable from there.",
-            Self::Json => "The figures as data, for another program to read.",
+            Self::Csv => t!("format.csv.detail"),
+            Self::Docx => t!("format.docx.detail"),
+            Self::Html => t!("format.html.detail"),
+            Self::Json => t!("format.json.detail"),
         }
     }
 }
@@ -176,7 +181,33 @@ impl Report {
         format!("spending-report-{}.{}", self.year, format.extension())
     }
 
-    fn month_name(index: usize) -> &'static str {
+    /// The month's name in the language the app is running in, for the three
+    /// writers that produce a document somebody reads.
+    fn month_name(index: usize) -> String {
+        match index {
+            0 => t!("month.january"),
+            1 => t!("month.february"),
+            2 => t!("month.march"),
+            3 => t!("month.april"),
+            4 => t!("month.may"),
+            5 => t!("month.june"),
+            6 => t!("month.july"),
+            7 => t!("month.august"),
+            8 => t!("month.september"),
+            9 => t!("month.october"),
+            10 => t!("month.november"),
+            _ => t!("month.december"),
+        }
+    }
+
+    /// The month's name in English, always.
+    ///
+    /// Only [`json`] uses this, for the same reason that file writes ISO dates
+    /// rather than the locale's: a program reading the file has no way to know
+    /// which language wrote it, and a field whose value changes when the user
+    /// switches the interface to French is a field nothing can rely on. The
+    /// number beside it in the JSON is the part to compute with either way.
+    pub(super) fn month_name_in_english(index: usize) -> &'static str {
         const MONTHS: [&str; 12] = [
             "January",
             "February",
@@ -196,7 +227,7 @@ impl Report {
 
     /// Months that had something in them, as (name, total) pairs. A month with
     /// no spending is left out rather than printed as a row of zeroes.
-    fn months_with_spending(&self) -> Vec<(&'static str, i64)> {
+    fn months_with_spending(&self) -> Vec<(String, i64)> {
         self.months
             .iter()
             .enumerate()
@@ -298,6 +329,40 @@ mod tests {
         assert_eq!(report.total_minor, 0);
         assert!(report.categories.is_empty());
         assert!(report.months_with_spending().is_empty());
+    }
+
+    /// The three writers that make a document somebody reads follow the
+    /// interface language; the one that makes data for another program does
+    /// not. Both halves matter: a French user's Word report reading in English
+    /// would be the feature not working, and a JSON field that changes value
+    /// when the interface language changes is a field nothing can parse.
+    #[test]
+    fn documents_follow_the_language_and_the_data_file_does_not() {
+        let report = sample();
+        let locale = Locale::from_tag("fr-FR");
+
+        let (french_html, french_json) = crate::i18n::with_language("fr", || {
+            (
+                String::from_utf8(html::render(&report, &locale, Sections::default())).unwrap(),
+                String::from_utf8(json::render(&report, &locale, Sections::default())).unwrap(),
+            )
+        });
+
+        assert!(french_html.contains("Par catégorie"), "{french_html}");
+        assert!(french_html.contains("Janvier"), "{french_html}");
+        // And it says which language it is in, so a screen reader picks the
+        // right voice for it.
+        assert!(french_html.contains("<html lang=\"fr\">"), "{french_html}");
+
+        assert!(french_json.contains("\"January\""), "{french_json}");
+        assert!(!french_json.contains("Janvier"), "{french_json}");
+
+        // The same call in English, to prove the French above came from the
+        // language rather than from something that says it in both.
+        let english_html = crate::i18n::with_language("en", || {
+            String::from_utf8(html::render(&report, &locale, Sections::default())).unwrap()
+        });
+        assert!(english_html.contains("By category"), "{english_html}");
     }
 
     #[test]

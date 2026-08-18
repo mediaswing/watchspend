@@ -5,6 +5,48 @@ Notable changes to this project, newest first. Versions follow
 
 ## [Unreleased]
 
+### Added
+
+- **The app speaks more than one language.** Everything the interface says now
+  comes from a language file rather than from the source, and it ships in
+  English and French. Which one is used follows the system language by default
+  and can be changed on the new **Settings** tab, taking effect at once with no
+  restart.
+- Language files are plain text and need no rebuild: copy
+  `assets/lang/en.toml`, translate the right-hand side of each line, and drop
+  it in the languages folder that Settings names and opens. Anything not yet
+  translated falls back to English, so a file works from its first line, and a
+  file whose `code` matches a built-in language replaces it. Whatever the
+  parser could not read is listed on Settings with line numbers, and the rest
+  of the file is still used. **Re-read the Files** picks up an edit without
+  restarting.
+- Reports are written in the language too — the headings, the column names and
+  the month names in the CSV, Word and HTML files. The JSON report is
+  deliberately left in English: its field names and month names are read by
+  another program, which has no way to know which language wrote the file.
+- **A light/dark choice.** The app still follows the operating system by
+  default, but **Settings** can now pin it to light or dark regardless —
+  changing the whole desktop is not a reasonable thing to ask of somebody who
+  wants one window dimmer.
+- A **Settings** tab, holding the two above and the startup update check. That
+  checkbox was previously reachable only from inside the box offering an
+  update, which is a place you cannot get back to once you have dismissed it.
+
+### Changed
+
+- Both themes are now defined by the app as explicit colour pairs with the
+  contrast worked out, rather than inherited from egui's defaults: every text
+  colour reaches at least 4.5:1 against the surface it is drawn on, control
+  outlines are real boundaries, and the keyboard focus ring is deliberately the
+  loudest thing on screen. Supporting text is a shade rather than a whisper —
+  egui's 60% default drops it below 4.5:1 on both themes.
+- The release archives now carry a `languages/` folder holding the shipped
+  language files, so somebody who downloaded a binary has a reference file to
+  translate from without fetching the source.
+- Releases no longer include a Linux download. Linux is still built and tested
+  on every commit, and `cargo build --release` is all it takes there; a single
+  dynamically linked binary cannot suit the distributions people actually run.
+
 ## [1.3.0] - 2026-08-15
 
 ### Security

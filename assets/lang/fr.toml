@@ -1,0 +1,343 @@
+# Generic Accounting System — fichier de langue français
+#
+# Chaque ligne porte sa source anglaise dans le commentaire au-dessus ou à côté.
+# Les clés à gauche du `=` ne se traduisent pas ; seul le texte entre guillemets
+# change. Les mots entre accolades — {name}, {n}, {path} — sont remplis par
+# l'application : déplacez-les où la phrase les veut, mais ne les renommez pas.
+
+code   = "fr"
+name   = "Français"
+
+# 0 et 1 prennent le singulier en français.
+plural = "french"
+
+
+# ------------------------------------------------------------ les onglets, à gauche
+
+tab.categories = "Catégories"
+tab.spending   = "Dépenses"
+tab.entries    = "Écritures"
+tab.reports    = "Rapports"
+tab.database   = "Base de données"
+tab.settings   = "Réglages"
+
+
+# --------------------------------------------------- les mots qui reviennent partout
+
+common.cancel = "Annuler"
+common.save   = "Enregistrer"
+common.delete = "Supprimer"
+common.edit   = "Modifier"
+common.rename = "Renommer"
+
+common.no_database            = "Aucune base de données n'est connectée."
+common.choose_on_database_tab = "Choisissez-en une dans l'onglet Base de données."
+
+
+# ------------------------------------------------------------- l'onglet Catégories
+
+categories.title    = "Catégories"                                                  # Categories
+categories.subtitle = "Total dépensé dans chaque catégorie depuis le début de {year}"
+categories.total    = "Total"
+
+categories.column.name  = "Catégorie"
+categories.column.spent = "Dépensé"
+
+categories.empty      = "Aucune catégorie pour l'instant."
+categories.empty_hint = "Ajoutez-en une ci-dessous pour commencer à y ranger des dépenses."
+
+# Des écritures saisies quand l'ordinateur était réglé sur une autre devise.
+categories.foreign.one   = "{n} écriture a été saisie dans une autre devise et n'est pas comptée ici."
+categories.foreign.other = "{n} écritures ont été saisies dans une autre devise et ne sont pas comptées ici."
+
+categories.add         = "Ajouter une catégorie"
+categories.add.title   = "Ajouter une catégorie"
+categories.add.body    = "Les dépenses se rangent par catégorie ; ceci en ajoute une de plus."
+categories.add.confirm = "Ajouter"
+categories.name_hint   = "ex. Courses"
+
+categories.rename.title = "Renommer la catégorie"
+categories.rename.body  = "Renommage de « {name} ». Ses dépenses la suivent."
+
+categories.delete.title = "Supprimer la catégorie ?"
+categories.delete.body  = "Supprimer « {name} » ? C'est irréversible."
+
+categories.connect_first = "Connectez d'abord une base de données dans l'onglet Base de données."
+
+category.needs_a_name  = "Donnez un nom à la catégorie."
+category.name_too_long = "Ce nom est trop long — 64 caractères au maximum."
+
+category.already_exists = "« {name} » est déjà une catégorie."
+category.no_such        = "Il n'existe aucune catégorie nommée « {name} »."
+category.has_entries    = "« {name} » contient encore des écritures — supprimez-les ou déplacez-les d'abord."
+
+
+# --------------------------------------------------------------- l'onglet Dépenses
+
+spending.title    = "Dépenses"
+spending.subtitle = "Montants en {code} ({symbol}) ; dates au format {format}"
+
+spending.date              = "Date"
+spending.category          = "Catégorie"
+spending.choose_category   = "Choisissez une catégorie…"
+spending.no_categories_yet = "Aucune catégorie pour l'instant"
+spending.amount            = "Montant ({symbol})"
+spending.description       = "Description (facultative)"
+spending.description_hint  = "C'était pour quoi ?"
+spending.record            = "Enregistrer la dépense"
+
+spending.add_a_category_first = "Ajoutez d'abord une catégorie — une dépense doit bien aller quelque part."
+spending.choose_a_category    = "Choisissez une catégorie."
+spending.description_too_long = "Cette description est trop longue — 255 caractères au maximum."
+
+
+# --------------------------------------------------------------- l'onglet Écritures
+
+entries.title    = "Écritures"
+entries.subtitle = "Tout ce qui a été saisi en {year}, du plus ancien au plus récent"
+
+entries.column.date        = "Date"
+entries.column.category    = "Catégorie"
+entries.column.amount      = "Montant"
+entries.column.description = "Description"
+
+entries.empty      = "Aucune écriture pour l'instant."
+entries.empty_hint = "Saisissez-en dans l'onglet Dépenses et elles apparaîtront ici."
+
+entries.edit.title = "Modifier l'écriture"
+
+entries.label        = "{amount} dans {category} le {date}"
+entries.delete.title = "Supprimer l'écriture ?"
+entries.delete.body  = "Supprimer {what} ? C'est irréversible."
+
+entry.no_longer_exists = "Cette écriture n'existe plus."
+
+
+# ---------------------------------------------------------------- l'onglet Rapports
+
+reports.title    = "Rapports"
+reports.subtitle = "Écrire les dépenses d'une année dans un fichier à garder, à envoyer ou à imprimer"
+
+reports.year        = "Année"
+reports.year_before = "L'année précédente"
+reports.year_after  = "L'année suivante"
+reports.this_year   = "Cette année"
+
+reports.summary = "{total} sur {entries} dans {categories}"
+
+reports.format = "Format"
+
+reports.include         = "Inclure"
+reports.include.monthly = "Un tableau mois par mois"
+reports.include.entries = "Chaque écriture, détaillée"
+
+reports.folder      = "Enregistrer dans ce dossier, sous {name}"
+reports.folder_hint = "chemin d'un dossier"
+reports.save        = "Enregistrer le rapport"
+
+reports.nothing_yet = "Rien n'a encore été saisi pour cette année — le rapport serait vide."
+
+reports.no_database      = "Il n'y a aucune base de données sur laquelle faire un rapport."
+reports.say_which_folder = "Indiquez dans quel dossier enregistrer."
+reports.unreadable       = "Impossible de lire les chiffres : {error}"
+reports.could_not_write  = "Impossible d'écrire {path} : {error}"
+
+format.csv.detail  = "Des colonnes pour un tableur : Excel, Numbers, LibreOffice."
+format.docx.detail = "Un document Word, avec les tableaux mis en page pour la lecture."
+format.html.detail = "Une page pour le navigateur, et imprimable depuis celui-ci."
+format.json.detail = "Les chiffres comme données, pour un autre programme."
+
+
+# ------------------------------------------------------- à l'intérieur d'un rapport
+
+report.name        = "Rapport de dépenses"
+report.title       = "Rapport de dépenses {year}"
+report.year        = "Année"
+report.generated   = "Généré le"
+report.currency    = "Devise"
+report.total_spent = "Total dépensé :"
+
+report.meta = "Généré le {date} · {code} · {entries} dans {categories}"
+
+report.entry_count.one      = "{n} écriture"
+report.entry_count.other    = "{n} écritures"
+report.category_count.one   = "{n} catégorie"
+report.category_count.other = "{n} catégories"
+
+report.by_category = "Par catégorie"
+report.by_month    = "Par mois"
+
+report.column.category    = "Catégorie"
+report.column.entries     = "Écritures"
+report.column.total       = "Total"
+report.column.share       = "Part"
+report.column.month       = "Mois"
+report.column.date        = "Date"
+report.column.amount      = "Montant"
+report.column.description = "Description"
+
+report.docx_failed = "Impossible de construire le document Word : {error}"
+
+month.january   = "Janvier"
+month.february  = "Février"
+month.march     = "Mars"
+month.april     = "Avril"
+month.may       = "Mai"
+month.june      = "Juin"
+month.july      = "Juillet"
+month.august    = "Août"
+month.september = "Septembre"
+month.october   = "Octobre"
+month.november  = "Novembre"
+month.december  = "Décembre"
+
+
+# --------------------------------------------------------- l'onglet Base de données
+
+database.title    = "Base de données"
+database.subtitle = "Où cette application garde vos catégories et vos dépenses"
+
+database.sqlite.title   = "Fichier SQLite (par défaut)"
+database.sqlite.detail  = "Un seul fichier sur cette machine. Rien à installer."
+database.mariadb.title  = "Serveur MariaDB"
+database.mariadb.detail = "Un serveur que vous gérez déjà, pour que plusieurs machines partagent les chiffres."
+database.mssql.title    = "SQL Server"
+database.mssql.detail   = "Une instance Microsoft SQL Server, sur cette machine ou sur une autre."
+
+database.file         = "Fichier de base de données"
+database.file_hint    = "chemin d'un fichier .sqlite"
+database.use_default  = "Utiliser l'emplacement par défaut"
+database.file_created = "Le fichier est créé s'il n'existe pas encore, ainsi que les dossiers qui y mènent."
+
+database.host     = "Hôte"
+database.port     = "Port"
+database.name     = "Base de données"
+database.user     = "Nom d'utilisateur"
+database.password = "Mot de passe"
+
+database.use_tls                = "Se connecter en TLS"
+database.tls_skip_verify        = "Accepter un certificat qui ne correspond pas au nom d'hôte"
+database.ca_cert                = "Fichier de certificat d'autorité (facultatif)"
+database.ca_cert_hint           = "pour un certificat de serveur émis par votre propre autorité"
+database.encrypt                = "Chiffrer la connexion"
+database.accept_any_certificate = "Accepter n'importe quel certificat proposé par ce serveur"
+database.remember_password      = "Retenir le mot de passe (écrit en clair dans le fichier de configuration)"
+
+database.mariadb.privileges = "Les tables sont créées à la première connexion : l'utilisateur a donc "
+                              "besoin de CREATE en plus de SELECT et INSERT."
+database.mssql.privileges   = "Les tables sont créées à la première connexion, ce qui demande CREATE "
+                              "TABLE, REFERENCES, SELECT et INSERT — le plus simple est de faire du "
+                              "compte un db_owner de cette base."
+
+database.test       = "Tester la connexion"
+database.use_this   = "Utiliser cette base"
+database.connecting = "Connexion…"
+
+database.settings_kept_in = "Les réglages sont conservés dans {path}"
+
+database.create.title   = "Créer une nouvelle base ?"
+database.create.body    = "Il n'y a aucun fichier à {path}. Y démarrer une nouvelle base vide "
+                          "convient si c'est bien ce que vous vouliez — mais si vous ouvriez une "
+                          "base existante, vérifiez d'abord le chemin : vos dépenses sont là où "
+                          "se trouve réellement ce fichier, intactes."
+database.create.confirm = "La créer"
+
+database.bad_port                 = "Le port doit être un nombre entre 1 et 65535."
+database.needs_host               = "Saisissez le nom d'hôte du serveur."
+database.needs_name               = "Saisissez le nom de la base de données."
+database.needs_user               = "Saisissez le nom d'utilisateur."
+database.file_needs_a_path        = "Donnez un chemin au fichier de base de données."
+database.could_not_open           = "Impossible d'ouvrir {path} : {error}"
+database.could_not_create_folder  = "Impossible de créer {path} : {error}"
+database.bad_stored_date          = "Une date enregistrée n'est pas une date : {date}"
+database.connected_but_unreadable = "Connecté, mais impossible d'y lire quoi que ce soit : {error}"
+database.could_not_start          = "Impossible de démarrer la connexion : {error}"
+database.attempt_stopped          = "La tentative de connexion s'est interrompue."
+database.timed_out                = "Délai dépassé lors de la connexion au serveur."
+
+
+# ---------------------------------------------------------------- l'onglet Réglages
+
+settings.title    = "Réglages"
+settings.subtitle = "Dans quelle langue parle cette application, et de quelle couleur elle est"
+
+settings.language        = "Langue"
+settings.language.system = "Suivre cet ordinateur"
+settings.language.help   = "Les langues sont de simples fichiers texte. Copiez-en un, traduisez-le et "
+                           "posez-le dans le dossier ci-dessous — tout ce que vous n'avez pas traduit "
+                           "retombe sur l'anglais, donc il fonctionne dès la première ligne."
+settings.language.folder      = "Les fichiers de langue vont dans {path}"
+settings.language.open_folder = "Ouvrir le dossier"
+settings.language.reload      = "Relire les fichiers"
+
+settings.language.problem_count.one   = "{n} ligne de ce fichier de langue n'a pas pu être lue :"
+settings.language.problem_count.other = "{n} lignes de ce fichier de langue n'ont pas pu être lues :"
+settings.language.problem             = "Ligne {line} : {what}"
+
+settings.appearance = "Apparence"
+
+appearance.system.label       = "Suivre cet ordinateur"
+appearance.system.description = "Clair ou sombre, selon le réglage de cet ordinateur."
+appearance.light.label        = "Clair"
+appearance.light.description  = "Toujours la fenêtre claire, quoi que fasse le reste du bureau."
+appearance.dark.label         = "Sombre"
+appearance.dark.description   = "Toujours la fenêtre sombre, quoi que fasse le reste du bureau."
+
+settings.updates                = "Mises à jour"
+settings.check_for_updates      = "Vérifier s'il existe une nouvelle version au démarrage"
+settings.check_for_updates.hint = "Une petite requête à GitHub. Rien n'est téléchargé ni installé."
+
+settings.could_not_save = "Impossible d'enregistrer : {error}"
+
+
+# ------------------------------------------------- la boîte annonçant une nouveauté
+
+update.title              = "Il existe une version plus récente"
+update.body               = "Vous utilisez la version {current}. La version {version} est parue."
+update.nothing_downloaded = "Rien n'a été téléchargé. La page de la version contient les notes et "
+                            "les fichiers pour chaque plateforme."
+update.dismiss            = "Ignorer"
+update.dismiss_hint       = "Cette version ne vous sera plus signalée"
+update.open_page          = "Ouvrir la page de la version"
+
+
+# ------------------------------------------- ce que l'application dit tout en bas
+
+status.no_database = "Aucune base de données"
+status.connecting  = "Connexion à {target}…"
+
+status.category_added   = "Catégorie « {name} » ajoutée."
+status.category_renamed = "« {old} » renommée en « {new} »."
+status.category_deleted = "Catégorie « {name} » supprimée."
+
+status.recorded            = "{amount} enregistré dans {category}."
+status.recorded_other_year = "{amount} enregistré dans {category}, à la date de {year}."
+status.entry_saved         = "Modification enregistrée."
+status.entry_deleted       = "Écriture supprimée."
+
+status.report_saved = "{format} enregistré dans {path}"
+
+status.connection_tested     = "{target} — connecté, et lisible."
+status.connection_failed     = "{target} — {reason}"
+status.now_using             = "Utilise maintenant {target}"
+status.connected_but_unsaved = "Connecté, mais impossible d'enregistrer le réglage : {error}"
+status.categories_unreadable = "Impossible de lire les catégories : {error}"
+
+status.language_changed   = "L'application est maintenant en {name}."
+status.language_reloaded  = "Fichiers de langue relus ; toujours en {name}."
+status.appearance_changed = "Apparence : {name}."
+
+
+# ------------------------------------------------ ce qui ne va pas dans ce qui a été saisi
+
+amount.enter                   = "Saisissez un montant."
+amount.not_an_amount           = "Ce n'est pas un montant. Utilisez des chiffres, avec {separator} comme virgule décimale."
+amount.no_decimals             = "Les montants en {code} n'ont pas de décimales."
+amount.too_many_decimals.one   = "Utilisez au plus {n} décimale."
+amount.too_many_decimals.other = "Utilisez au plus {n} décimales."
+amount.too_large               = "Ce montant est trop grand."
+amount.greater_than_zero       = "Saisissez un montant supérieur à zéro."
+
+date.enter_as     = "Saisissez la date au format {format}."
+date.bad_year     = "Cette année semble fausse. Saisissez la date au format {format}."
+date.no_such_date = "Cette date n'existe pas. Saisissez-la au format {format}."

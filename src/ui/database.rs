@@ -8,7 +8,7 @@ use crate::db::Store;
 use crate::db::attempt::{Attempt, Purpose, Target};
 use crate::db::mariadb::MariaDbSettings;
 use crate::db::mssql::MsSqlSettings;
-use crate::ui;
+use crate::{t, ui};
 
 pub struct State {
     pub backend: Backend,
@@ -44,11 +44,7 @@ impl State {
 }
 
 pub fn show(app: &mut App, ui: &mut Ui) {
-    ui::pane_header(
-        ui,
-        "Database",
-        "Where this app keeps your categories and spending",
-    );
+    ui::pane_header(ui, &t!("database.title"), &t!("database.subtitle"));
 
     let mut test_clicked = false;
     let mut apply_clicked = false;
@@ -61,22 +57,22 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             ui,
             &mut state.backend,
             Backend::Sqlite,
-            "SQLite file (default)",
-            "A single file on this machine. Nothing to set up.",
+            &t!("database.sqlite.title"),
+            &t!("database.sqlite.detail"),
         );
         choice(
             ui,
             &mut state.backend,
             Backend::MariaDb,
-            "MariaDB server",
-            "A server you already run, so several machines can share the figures.",
+            &t!("database.mariadb.title"),
+            &t!("database.mariadb.detail"),
         );
         choice(
             ui,
             &mut state.backend,
             Backend::MsSql,
-            "SQL Server",
-            "A Microsoft SQL Server instance, on this machine or another.",
+            &t!("database.mssql.title"),
+            &t!("database.mssql.detail"),
         );
         ui.add_space(14.0);
 
@@ -84,70 +80,75 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             Backend::Sqlite => {
                 ui::labelled_field(
                     ui,
-                    "Database file",
+                    &t!("database.file"),
                     &mut state.sqlite_path,
-                    "path to a .sqlite file",
+                    &t!("database.file_hint"),
                 );
-                if ui.link("Use the default location").clicked() {
+                if ui.link(t!("database.use_default")).clicked() {
                     state.sqlite_path = config::default_sqlite_path().display().to_string();
                 }
                 ui.add_space(4.0);
-                ui.label(
-                    RichText::new(
-                        "The file is created if it is not there yet, along with any \
-                         folders leading to it.",
-                    )
-                    .size(12.0)
-                    .weak(),
-                );
+                ui.label(RichText::new(t!("database.file_created")).size(12.0).weak());
             }
             Backend::MariaDb => {
-                ui::labelled_field(ui, "Host", &mut state.mariadb.host, "localhost");
-                ui::labelled_field(ui, "Port", &mut state.mariadb_port, "3306");
-                ui::labelled_field(ui, "Database", &mut state.mariadb.database, "accounts");
-                ui::labelled_field(ui, "User name", &mut state.mariadb.username, "");
-                ui::labelled_password(ui, "Password", &mut state.mariadb.password);
+                ui::labelled_field(
+                    ui,
+                    &t!("database.host"),
+                    &mut state.mariadb.host,
+                    "localhost",
+                );
+                ui::labelled_field(ui, &t!("database.port"), &mut state.mariadb_port, "3306");
+                ui::labelled_field(
+                    ui,
+                    &t!("database.name"),
+                    &mut state.mariadb.database,
+                    "accounts",
+                );
+                ui::labelled_field(ui, &t!("database.user"), &mut state.mariadb.username, "");
+                ui::labelled_password(ui, &t!("database.password"), &mut state.mariadb.password);
 
-                ui.checkbox(&mut state.mariadb.use_tls, "Connect over TLS");
+                ui.checkbox(&mut state.mariadb.use_tls, t!("database.use_tls"));
                 if state.mariadb.use_tls {
                     ui.checkbox(
                         &mut state.mariadb.tls_skip_verify,
-                        "Accept a certificate that does not match the host name",
+                        t!("database.tls_skip_verify"),
                     );
                     ui::labelled_field(
                         ui,
-                        "CA certificate file (optional)",
+                        &t!("database.ca_cert"),
                         &mut state.mariadb.ca_cert_path,
-                        "for a server certificate issued by your own authority",
+                        &t!("database.ca_cert_hint"),
                     );
                 }
                 ui.checkbox(
                     &mut state.remember_password,
-                    "Remember the password (stored as plain text in the config file)",
+                    t!("database.remember_password"),
                 );
                 ui.add_space(4.0);
                 ui.label(
-                    RichText::new(
-                        "The tables are created on first connection, so the user needs \
-                         CREATE as well as SELECT and INSERT.",
-                    )
-                    .size(12.0)
-                    .weak(),
+                    RichText::new(t!("database.mariadb.privileges"))
+                        .size(12.0)
+                        .weak(),
                 );
                 ui.add_space(10.0);
                 test_clicked = ui
-                    .add_enabled_ui(!connecting, |ui| ui::wide_button(ui, "Test Connection"))
+                    .add_enabled_ui(!connecting, |ui| ui::wide_button(ui, &t!("database.test")))
                     .inner
                     .clicked();
             }
             Backend::MsSql => {
-                ui::labelled_field(ui, "Host", &mut state.mssql.host, "localhost");
-                ui::labelled_field(ui, "Port", &mut state.mssql_port, "1433");
-                ui::labelled_field(ui, "Database", &mut state.mssql.database, "accounts");
-                ui::labelled_field(ui, "User name", &mut state.mssql.username, "");
-                ui::labelled_password(ui, "Password", &mut state.mssql.password);
+                ui::labelled_field(ui, &t!("database.host"), &mut state.mssql.host, "localhost");
+                ui::labelled_field(ui, &t!("database.port"), &mut state.mssql_port, "1433");
+                ui::labelled_field(
+                    ui,
+                    &t!("database.name"),
+                    &mut state.mssql.database,
+                    "accounts",
+                );
+                ui::labelled_field(ui, &t!("database.user"), &mut state.mssql.username, "");
+                ui::labelled_password(ui, &t!("database.password"), &mut state.mssql.password);
 
-                ui.checkbox(&mut state.mssql.use_tls, "Encrypt the connection");
+                ui.checkbox(&mut state.mssql.use_tls, t!("database.encrypt"));
                 // Not tucked away under "Encrypt the connection" the way the
                 // MariaDB one is: SQL Server encrypts the login whatever this
                 // box says, so its certificate is checked either way, and a
@@ -156,25 +157,21 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 // deliberately left clear makes the server unreachable.
                 ui.checkbox(
                     &mut state.mssql.tls_skip_verify,
-                    "Accept any certificate this server offers",
+                    t!("database.accept_any_certificate"),
                 );
                 ui.checkbox(
                     &mut state.remember_password,
-                    "Remember the password (stored as plain text in the config file)",
+                    t!("database.remember_password"),
                 );
                 ui.add_space(4.0);
                 ui.label(
-                    RichText::new(
-                        "The tables are created on first connection, which needs CREATE \
-                         TABLE, REFERENCES, SELECT and INSERT — simplest is to make the \
-                         login db_owner of this database.",
-                    )
-                    .size(12.0)
-                    .weak(),
+                    RichText::new(t!("database.mssql.privileges"))
+                        .size(12.0)
+                        .weak(),
                 );
                 ui.add_space(10.0);
                 test_clicked = ui
-                    .add_enabled_ui(!connecting, |ui| ui::wide_button(ui, "Test Connection"))
+                    .add_enabled_ui(!connecting, |ui| ui::wide_button(ui, &t!("database.test")))
                     .inner
                     .clicked();
             }
@@ -187,10 +184,10 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             .add_enabled_ui(!connecting, |ui| {
                 ui::wide_button(
                     ui,
-                    if connecting {
-                        "Connecting…"
+                    &if connecting {
+                        t!("database.connecting")
                     } else {
-                        "Use This Database"
+                        t!("database.use_this")
                     },
                 )
             })
@@ -204,9 +201,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
 
         ui.add_space(10.0);
         ui.label(
-            RichText::new(format!(
-                "Settings are kept in {}",
-                config::tilde(&config::config_path())
+            RichText::new(t!(
+                "database.settings_kept_in",
+                path = config::tilde(&config::config_path())
             ))
             .size(12.0)
             .weak(),
@@ -253,7 +250,7 @@ fn sqlite_path_of(app: &App) -> std::path::PathBuf {
 fn parse_port(text: &str) -> Result<u16, String> {
     text.trim()
         .parse::<u16>()
-        .map_err(|_| "The port has to be a number between 1 and 65535.".to_owned())
+        .map_err(|_| t!("database.bad_port"))
 }
 
 /// What the user has asked for, as something that can be opened.
@@ -310,7 +307,7 @@ fn begin(app: &mut App, purpose: Purpose) {
 /// keeps a wrong hostname from freezing the window for five seconds.
 fn start(app: &mut App, target: Target, purpose: Purpose) {
     app.status = Some(crate::app::Status {
-        message: format!("Connecting to {}…", target.label()),
+        message: t!("status.connecting", target = target.label()),
         good: true,
     });
     app.database.error = None;
@@ -328,15 +325,9 @@ fn create_confirm(app: &mut App, ctx: &egui::Context) {
         ctx,
         egui::Id::new("create-database"),
         &mut open,
-        "Create a New Database?",
-        &format!(
-            "There is no file at {}. Starting a new, empty database there is \
-             fine if that is what you meant — but if you were opening one you \
-             already have, check the path for a typo first: your existing \
-             spending is wherever that file really is, untouched.",
-            config::tilde(&path)
-        ),
-        "Create It",
+        &t!("database.create.title"),
+        &t!("database.create.body", path = config::tilde(&path)),
+        &t!("database.create.confirm"),
     );
     if !open {
         app.database.confirm_create = None;
@@ -361,7 +352,11 @@ pub fn connection_finished(
             // comes back the user may have typed a different hostname into
             // the fields, and the message should still be about the attempt
             // that was actually made.
-            let message = format!("{} — {reason}", attempt.target.label());
+            let message = t!(
+                "status.connection_failed",
+                target = attempt.target.label(),
+                reason = reason
+            );
             app.database.error = Some(message.clone());
             app.report_error(message);
             // Nothing to fall back on means the app has no database at all,
@@ -377,7 +372,7 @@ pub fn connection_finished(
 
     if attempt.purpose == Purpose::Test {
         // Tested and thrown away: the app carries on with whatever it had.
-        return app.report_ok(format!("{} — connected, and readable.", store.describe()));
+        return app.report_ok(t!("status.connection_tested", target = store.describe()));
     }
 
     // Only now is the old connection let go: a failed attempt leaves the app
@@ -395,9 +390,9 @@ pub fn connection_finished(
     app.config.remember_password = app.database.remember_password;
 
     if let Err(err) = app.config.save() {
-        app.report_error(format!("Connected, but could not save the setting: {err}"));
+        app.report_error(t!("status.connected_but_unsaved", error = err));
     } else {
-        app.report_ok(format!("Now using {where_it_is}"));
+        app.report_ok(t!("status.now_using", target = where_it_is));
     }
     app.reload_totals();
     app.spending.category = None;

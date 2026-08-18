@@ -13,6 +13,8 @@
 
 use chrono::NaiveDate;
 
+use crate::{t, tn};
+
 /// Order of the parts in a numeric date.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DateOrder {
@@ -375,7 +377,7 @@ impl Locale {
     pub fn parse_money(&self, input: &str) -> Result<i64, String> {
         let mut s: String = input.trim().to_owned();
         if s.is_empty() {
-            return Err("Enter an amount.".to_owned());
+            return Err(t!("amount.enter"));
         }
 
         // Tolerate the symbol and the currency code being typed in.
@@ -389,7 +391,7 @@ impl Locale {
             s.remove(0);
         }
         if s.is_empty() {
-            return Err("Enter an amount.".to_owned());
+            return Err(t!("amount.enter"));
         }
 
         let (whole, frac) = match s.split_once(self.decimal_sep) {
@@ -399,40 +401,33 @@ impl Locale {
         let whole = if whole.is_empty() { "0" } else { whole };
 
         if !whole.chars().all(|c| c.is_ascii_digit()) || !frac.chars().all(|c| c.is_ascii_digit()) {
-            return Err(format!(
-                "That is not an amount. Use digits, with {} for the decimal point.",
-                self.decimal_sep
-            ));
+            return Err(t!("amount.not_an_amount", separator = self.decimal_sep));
         }
         let decimals = self.currency.decimals as usize;
         if frac.len() > decimals {
             return Err(if decimals == 0 {
-                format!("{} amounts have no decimal places.", self.currency.code)
+                t!("amount.no_decimals", code = self.currency.code)
             } else {
-                format!("Use at most {decimals} decimal places.")
+                tn!("amount.too_many_decimals", decimals as u64)
             });
         }
 
-        let whole: i64 = whole
-            .parse()
-            .map_err(|_| "That amount is too large.".to_owned())?;
+        let whole: i64 = whole.parse().map_err(|_| t!("amount.too_large"))?;
         let frac_padded = format!("{frac:0<decimals$}");
         let frac: i64 = if decimals == 0 {
             0
         } else {
-            frac_padded
-                .parse()
-                .map_err(|_| "That amount is too large.".to_owned())?
+            frac_padded.parse().map_err(|_| t!("amount.too_large"))?
         };
 
         let scale = 10i64.pow(self.currency.decimals);
         let minor = whole
             .checked_mul(scale)
             .and_then(|w| w.checked_add(frac))
-            .ok_or_else(|| "That amount is too large.".to_owned())?;
+            .ok_or_else(|| t!("amount.too_large"))?;
 
         if minor == 0 {
-            return Err("Enter an amount greater than zero.".to_owned());
+            return Err(t!("amount.greater_than_zero"));
         }
         Ok(if negative { -minor } else { minor })
     }
@@ -470,11 +465,11 @@ impl Locale {
             .filter(|p| !p.is_empty())
             .collect();
         if parts.len() != 3 || !parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit())) {
-            return Err(format!("Enter the date as {}.", self.date_hint()));
+            return Err(t!("date.enter_as", format = self.date_hint()));
         }
 
         if parts.iter().any(|p| p.len() > 4) {
-            return Err(format!("Enter the date as {}.", self.date_hint()));
+            return Err(t!("date.enter_as", format = self.date_hint()));
         }
 
         let n = |i: usize| parts[i].parse::<i32>().unwrap_or(-1);
@@ -496,14 +491,11 @@ impl Locale {
         // not, and neither is anyone's budget. Bound it to four-digit years so
         // a typo is caught here rather than by the database, or worse, stored.
         if !(1000..=9999).contains(&y) {
-            return Err(format!(
-                "That year looks wrong. Enter the date as {}.",
-                self.date_hint()
-            ));
+            return Err(t!("date.bad_year", format = self.date_hint()));
         }
 
         NaiveDate::from_ymd_opt(y, m as u32, d as u32)
-            .ok_or_else(|| format!("There is no such date. Enter it as {}.", self.date_hint()))
+            .ok_or_else(|| t!("date.no_such_date", format = self.date_hint()))
     }
 }
 

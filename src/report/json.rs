@@ -66,7 +66,7 @@ pub fn render(report: &Report, locale: &Locale, sections: Sections) -> Vec<u8> {
                     .map(|(i, total)| {
                         json!({
                             "month": i + 1,
-                            "name": Report::month_name(i),
+                            "name": Report::month_name_in_english(i),
                             "total": money(*total),
                         })
                     })

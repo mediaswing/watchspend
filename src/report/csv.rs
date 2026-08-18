@@ -8,6 +8,7 @@
 
 use super::{Report, Sections, share};
 use crate::locale::Locale;
+use crate::t;
 
 const BOM: &str = "\u{feff}";
 const CRLF: &str = "\r\n";
@@ -24,21 +25,41 @@ pub fn render(report: &Report, locale: &Locale, sections: Sections) -> Vec<u8> {
         out.push_str(CRLF);
     };
 
-    row(&["Spending report"], &mut out);
-    row(&["Year", &report.year.to_string()], &mut out);
+    row(&[&t!("report.name")], &mut out);
+    row(&[&t!("report.year"), &report.year.to_string()], &mut out);
     row(
-        &["Generated", &locale.format_date(report.generated)],
+        &[
+            &t!("report.generated"),
+            &locale.format_date(report.generated),
+        ],
         &mut out,
     );
-    row(&["Currency", locale.currency.code], &mut out);
+    row(&[&t!("report.currency"), locale.currency.code], &mut out);
     row(
-        &["Total", &plain_amount(report.total_minor, locale)],
+        &[
+            &t!("report.column.total"),
+            &plain_amount(report.total_minor, locale),
+        ],
         &mut out,
     );
-    row(&["Entries", &report.entries.len().to_string()], &mut out);
+    row(
+        &[
+            &t!("report.column.entries"),
+            &report.entries.len().to_string(),
+        ],
+        &mut out,
+    );
     out.push_str(CRLF);
 
-    row(&["Category", "Entries", "Total", "Share"], &mut out);
+    row(
+        &[
+            &t!("report.column.category"),
+            &t!("report.column.entries"),
+            &t!("report.column.total"),
+            &t!("report.column.share"),
+        ],
+        &mut out,
+    );
     for line in &report.categories {
         row(
             &[
@@ -53,15 +74,26 @@ pub fn render(report: &Report, locale: &Locale, sections: Sections) -> Vec<u8> {
 
     if sections.monthly {
         out.push_str(CRLF);
-        row(&["Month", "Total"], &mut out);
+        row(
+            &[&t!("report.column.month"), &t!("report.column.total")],
+            &mut out,
+        );
         for (name, total) in report.months_with_spending() {
-            row(&[name, &plain_amount(total, locale)], &mut out);
+            row(&[&name, &plain_amount(total, locale)], &mut out);
         }
     }
 
     if sections.entries {
         out.push_str(CRLF);
-        row(&["Date", "Category", "Amount", "Description"], &mut out);
+        row(
+            &[
+                &t!("report.column.date"),
+                &t!("report.column.category"),
+                &t!("report.column.amount"),
+                &t!("report.column.description"),
+            ],
+            &mut out,
+        );
         for entry in &report.entries {
             row(
                 &[
@@ -228,15 +260,21 @@ mod tests {
 
     #[test]
     fn sections_can_be_left_out() {
-        let bare = String::from_utf8(render(
-            &sample(),
-            &uk(),
-            Sections {
-                monthly: false,
-                entries: false,
-            },
-        ))
-        .unwrap();
+        // Holding the language, because the headings this looks for are the
+        // English ones and the active language is process-wide: without this,
+        // a test running beside it that switches to French answers this one in
+        // French, and the failure turns up once in every few dozen runs.
+        let bare = crate::i18n::with_language("en", || {
+            String::from_utf8(render(
+                &sample(),
+                &uk(),
+                Sections {
+                    monthly: false,
+                    entries: false,
+                },
+            ))
+            .unwrap()
+        });
         assert!(!bare.contains("Month"));
         assert!(!bare.contains("Description"));
         assert!(bare.contains("Category"));

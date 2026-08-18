@@ -9,8 +9,8 @@
 use egui::{Id, RichText};
 
 use crate::app::App;
-use crate::ui;
 use crate::update::{CURRENT, Update};
+use crate::{t, ui};
 
 pub fn show(app: &mut App, ctx: &egui::Context) {
     let Some(update) = app.update.clone() else {
@@ -23,28 +23,29 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
 
     let modal = egui::Modal::new(Id::new("update-available")).show(ctx, |ui| {
         ui.set_width(380.0);
-        ui.heading("There is a newer version");
+        ui.heading(t!("update.title"));
         ui.add_space(6.0);
-        ui.label(format!(
-            "You are running {CURRENT}. Version {} has been released.",
-            update.version
+        ui.label(t!(
+            "update.body",
+            current = CURRENT,
+            version = update.version
         ));
         ui.add_space(4.0);
         ui.label(
-            RichText::new(
-                "Nothing has been downloaded. The release page has the notes and \
-                 the files for each platform.",
-            )
-            .size(12.0)
-            .weak(),
+            RichText::new(t!("update.nothing_downloaded"))
+                .size(12.0)
+                .weak(),
         );
 
         ui.add_space(14.0);
         ui.horizontal(|ui| {
             let width = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
             if ui
-                .add_sized([width, 36.0], egui::Button::new(ui::centred("Dismiss")))
-                .on_hover_text("You will not be told about this version again")
+                .add_sized(
+                    [width, 36.0],
+                    egui::Button::new(ui::centred(t!("update.dismiss"))),
+                )
+                .on_hover_text(t!("update.dismiss_hint"))
                 .clicked()
             {
                 dismiss = true;
@@ -52,7 +53,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             if ui
                 .add_sized(
                     [width, 36.0],
-                    egui::Button::new(ui::centred("Open the Release Page")),
+                    egui::Button::new(ui::centred(t!("update.open_page"))),
                 )
                 .clicked()
             {
@@ -61,7 +62,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         });
 
         ui.add_space(8.0);
-        ui.checkbox(&mut keep_checking, "Check for new versions at startup");
+        ui.checkbox(&mut keep_checking, t!("settings.check_for_updates"));
     });
 
     // Clicking away or pressing Escape leaves the question for next time,

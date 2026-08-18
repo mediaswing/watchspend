@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, OptionalExtension as _, params};
 
 use super::{CategoryTotal, Error, NewSpend, Result, SpendEntry, Store, clean_category_name};
+use crate::t;
 
 pub struct SqliteStore {
     conn: Connection,
@@ -17,8 +18,13 @@ impl SqliteStore {
             create_dir(parent)?;
         }
         restrict(path)?;
-        let conn = Connection::open(path)
-            .map_err(|e| Error::Backend(format!("Could not open {}: {e}", path.display())))?;
+        let conn = Connection::open(path).map_err(|e| {
+            Error::Backend(t!(
+                "database.could_not_open",
+                path = path.display(),
+                error = e
+            ))
+        })?;
         conn.pragma_update(None, "foreign_keys", "ON").ok();
         let mut store = Self {
             conn,
@@ -157,7 +163,7 @@ impl Store for SqliteStore {
     fn add_category(&mut self, name: &str) -> Result<()> {
         let name = clean_category_name(name)?;
         if self.category_id(&name)?.is_some() {
-            return Err(Error::Rejected(format!("“{name}” is already a category.")));
+            return Err(Error::Rejected(t!("category.already_exists", name = name)));
         }
         self.conn
             .execute("INSERT INTO categories (name) VALUES (?1)", params![name])
@@ -166,9 +172,9 @@ impl Store for SqliteStore {
     }
 
     fn add_spend(&mut self, spend: &NewSpend) -> Result<()> {
-        let category_id = self.category_id(&spend.category)?.ok_or_else(|| {
-            Error::Rejected(format!("There is no category called “{}”.", spend.category))
-        })?;
+        let category_id = self
+            .category_id(&spend.category)?
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = spend.category)))?;
         self.conn
             .execute(
                 "INSERT INTO spending (category_id, spent_on, amount_minor, currency, description)
@@ -186,9 +192,9 @@ impl Store for SqliteStore {
     }
 
     fn update_spend(&mut self, id: i64, spend: &NewSpend) -> Result<()> {
-        let category_id = self.category_id(&spend.category)?.ok_or_else(|| {
-            Error::Rejected(format!("There is no category called “{}”.", spend.category))
-        })?;
+        let category_id = self
+            .category_id(&spend.category)?
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = spend.category)))?;
         let changed = self
             .conn
             .execute(
@@ -221,12 +227,13 @@ impl Store for SqliteStore {
         let new_name = clean_category_name(new_name)?;
         let id = self
             .category_id(old_name)?
-            .ok_or_else(|| Error::Rejected(format!("There is no category called “{old_name}”.")))?;
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = old_name)))?;
         if let Some(existing) = self.category_id(&new_name)?
             && existing != id
         {
-            return Err(Error::Rejected(format!(
-                "“{new_name}” is already a category."
+            return Err(Error::Rejected(t!(
+                "category.already_exists",
+                name = new_name
             )));
         }
         self.conn
@@ -241,7 +248,7 @@ impl Store for SqliteStore {
     fn delete_category(&mut self, name: &str) -> Result<()> {
         let id = self
             .category_id(name)?
-            .ok_or_else(|| Error::Rejected(format!("There is no category called “{name}”.")))?;
+            .ok_or_else(|| Error::Rejected(t!("category.no_such", name = name)))?;
         self.conn
             .execute("DELETE FROM categories WHERE id = ?1", params![id])
             .map_err(|e| category_delete_error(name, e))?;
@@ -272,9 +279,13 @@ fn create_dir(parent: &Path) -> Result<()> {
         use std::os::unix::fs::DirBuilderExt as _;
         builder.mode(0o700);
     }
-    builder
-        .create(parent)
-        .map_err(|e| Error::Backend(format!("Could not create {}: {e}", parent.display())))
+    builder.create(parent).map_err(|e| {
+        Error::Backend(t!(
+            "database.could_not_create_folder",
+            path = parent.display(),
+            error = e
+        ))
+    })
 }
 
 /// Keep the database file itself to its owner, for the same reason as the
@@ -299,7 +310,13 @@ fn restrict(path: &Path) -> Result<()> {
         .truncate(false)
         .mode(0o600)
         .open(path)
-        .map_err(|e| Error::Backend(format!("Could not open {}: {e}", path.display())))?;
+        .map_err(|e| {
+            Error::Backend(t!(
+                "database.could_not_open",
+                path = path.display(),
+                error = e
+            ))
+        })?;
 
     // `mode` above only applies when creating, so tighten a database left at
     // `0644` by an earlier, laxer version of this app. Someone else's file in
@@ -329,7 +346,7 @@ fn restrict(_path: &Path) -> Result<()> {
 /// nothing worth leaking either way.
 fn not_found_unless_changed(changed: usize) -> Result<()> {
     if changed == 0 {
-        return Err(Error::Rejected("That entry no longer exists.".to_owned()));
+        return Err(Error::Rejected(t!("entry.no_longer_exists")));
     }
     Ok(())
 }
@@ -341,9 +358,7 @@ fn category_delete_error(name: &str, e: rusqlite::Error) -> Error {
     if let rusqlite::Error::SqliteFailure(inner, _) = &e
         && inner.code == rusqlite::ErrorCode::ConstraintViolation
     {
-        return Error::Rejected(format!(
-            "“{name}” still has spending entries — delete or move them first."
-        ));
+        return Error::Rejected(t!("category.has_entries", name = name));
     }
     backend(e)
 }
@@ -352,7 +367,7 @@ fn category_delete_error(name: &str, e: rusqlite::Error) -> Error {
 /// else in that column was not put there by this app.
 fn parse_stored_date(text: &str) -> Result<chrono::NaiveDate> {
     chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
-        .map_err(|_| Error::Backend(format!("A stored date is not a date: {text:?}")))
+        .map_err(|_| Error::Backend(t!("database.bad_stored_date", date = text)))
 }
 
 #[cfg(test)]

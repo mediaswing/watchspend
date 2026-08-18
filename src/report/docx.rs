@@ -16,6 +16,7 @@ use zip::write::SimpleFileOptions;
 
 use super::{Report, Sections, escape_markup, share};
 use crate::locale::Locale;
+use crate::t;
 
 /// Twips — twentieths of a point — are OOXML's unit for anything on the page.
 /// A4 is 210×297mm, and the margins are 2cm all round.
@@ -30,33 +31,30 @@ pub fn render(report: &Report, locale: &Locale, sections: Sections) -> Result<Ve
     // Packaging writes to a `Vec`, so this should not fail — but if it ever
     // did, a half-built document saved as though it were whole is the one
     // outcome worth ruling out.
-    package(&document).map_err(|err| format!("Could not build the Word document: {err}"))
+    package(&document).map_err(|err| t!("report.docx_failed", error = err))
 }
 
 fn document_xml(report: &Report, locale: &Locale, sections: Sections) -> String {
     let mut body = String::with_capacity(8192);
 
-    body.push_str(&heading(&format!("Spending report {}", report.year), 36));
-    body.push_str(&muted(&format!(
-        "Generated {} · {} · {} {} across {} {}",
-        locale.format_date(report.generated),
-        locale.currency.code,
-        report.entries.len(),
-        plural(report.entries.len(), "entry", "entries"),
-        report.categories.len(),
-        plural(report.categories.len(), "category", "categories"),
-    )));
+    body.push_str(&heading(&t!("report.title", year = report.year), 36));
+    body.push_str(&muted(&super::html::meta(report, locale)));
     body.push_str(&paragraph_runs(&[
-        run("Total spent: ", false, 24),
+        run(&format!("{} ", t!("report.total_spent")), false, 24),
         run(&locale.format_money(report.total_minor), true, 24),
     ]));
 
-    body.push_str(&heading("By category", 28));
+    body.push_str(&heading(&t!("report.by_category"), 28));
     let widths = share_out(&[46, 14, 22, 18]);
     body.push_str(&table(
         &widths,
         &[header_cells(
-            &["Category", "Entries", "Total", "Share"],
+            &[
+                t!("report.column.category"),
+                t!("report.column.entries"),
+                t!("report.column.total"),
+                t!("report.column.share"),
+            ],
             &[false, true, true, true],
         )],
         &report
@@ -76,7 +74,7 @@ fn document_xml(report: &Report, locale: &Locale, sections: Sections) -> String 
             })
             .chain(std::iter::once(cells(
                 &[
-                    "Total".to_owned(),
+                    t!("report.column.total"),
                     report.entries.len().to_string(),
                     locale.format_money(report.total_minor),
                     String::new(),
@@ -88,32 +86,36 @@ fn document_xml(report: &Report, locale: &Locale, sections: Sections) -> String 
     ));
 
     if sections.monthly {
-        body.push_str(&heading("By month", 28));
+        body.push_str(&heading(&t!("report.by_month"), 28));
         let widths = share_out(&[60, 40]);
         body.push_str(&table(
             &widths,
-            &[header_cells(&["Month", "Total"], &[false, true])],
+            &[header_cells(
+                &[t!("report.column.month"), t!("report.column.total")],
+                &[false, true],
+            )],
             &report
                 .months_with_spending()
                 .into_iter()
                 .map(|(name, total)| {
-                    cells(
-                        &[name.to_owned(), locale.format_money(total)],
-                        &[false, true],
-                        false,
-                    )
+                    cells(&[name, locale.format_money(total)], &[false, true], false)
                 })
                 .collect::<Vec<_>>(),
         ));
     }
 
     if sections.entries {
-        body.push_str(&heading("Entries", 28));
+        body.push_str(&heading(&t!("report.column.entries"), 28));
         let widths = share_out(&[18, 26, 18, 38]);
         body.push_str(&table(
             &widths,
             &[header_cells(
-                &["Date", "Category", "Amount", "Description"],
+                &[
+                    t!("report.column.date"),
+                    t!("report.column.category"),
+                    t!("report.column.amount"),
+                    t!("report.column.description"),
+                ],
                 &[false, false, true, false],
             )],
             &report
@@ -147,10 +149,6 @@ fn document_xml(report: &Report, locale: &Locale, sections: Sections) -> String 
 
 /// The WordprocessingML namespace, spelled once.
 const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-
-fn plural(count: usize, one: &'static str, many: &'static str) -> &'static str {
-    if count == 1 { one } else { many }
-}
 
 /// Column widths in twips from a set of percentages.
 fn share_out(percentages: &[u32]) -> Vec<u32> {
@@ -211,11 +209,11 @@ fn cells(texts: &[String], right: &[bool], bold: bool) -> Vec<(String, bool, boo
         .collect()
 }
 
-fn header_cells(texts: &[&str], right: &[bool]) -> Vec<(String, bool, bool)> {
+fn header_cells(texts: &[String], right: &[bool]) -> Vec<(String, bool, bool)> {
     texts
         .iter()
         .zip(right)
-        .map(|(text, right)| ((*text).to_owned(), *right, true))
+        .map(|(text, right)| (text.clone(), *right, true))
         .collect()
 }
 
@@ -362,7 +360,9 @@ mod tests {
 
     #[test]
     fn the_figures_are_in_there() {
-        let parts = parts();
+        // The heading below is the English one, and the language is
+        // process-wide — see the note on `i18n::with_language`.
+        let parts = crate::i18n::with_language("en", parts);
         let document = &parts["word/document.xml"];
         assert!(document.contains("£1,201.84"));
         assert!(document.contains("Groceries"));

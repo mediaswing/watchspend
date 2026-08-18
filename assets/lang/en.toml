@@ -1,0 +1,385 @@
+# Generic Accounting System language file — English
+#
+# This is the reference file. Every other language is checked against it by a
+# test: same keys, same {placeholders}. To start a new language, copy this file,
+# change `code`, `name` and `plural` at the top, and translate the right-hand
+# side of each line. Leave the keys alone.
+#
+# A few things worth knowing before you start:
+#
+#   {name}       and the other braced words are values the app fills in. You may
+#                move them anywhere in the sentence, but do not rename them.
+#   {n}          in a counted message is the number itself.
+#   .one/.other  a counted message. Give every form your language uses — see
+#                `plural` below.
+#   "…" "…"      a long value continued on the next line. The two are joined
+#                exactly as written, so mind the space at the end of the first.
+#
+# You do not have to finish. Any line you have not translated falls back to the
+# English one here, so the app stays usable from your very first line. Drop your
+# file in the languages folder — the Settings tab shows you where it is, and has
+# a button that re-reads it without restarting the app.
+#
+# Money and dates are not here. How an amount and a date are written is decided
+# by the region your computer is set to, not by the language you read: someone
+# running the app in French in Canada should still see Canadian dollars.
+
+code   = "en"
+name   = "English"
+
+# Which plural rule this language follows. One of:
+#   one_other   one form for 1, another for everything else (English, German,
+#               Spanish, Italian, Dutch, Swedish)
+#   french      as above, but 0 also takes the singular (French, pt-BR)
+#   polish      one / few / many
+#   russian     one / few / many, counted differently (Russian, Ukrainian)
+plural = "one_other"
+
+
+# ---------------------------------------------------------- the tabs, down the left
+
+tab.categories = "Categories"
+tab.spending   = "Spending"
+tab.entries    = "Entries"
+tab.reports    = "Reports"
+tab.database   = "Database"
+tab.settings   = "Settings"
+
+
+# ------------------------------------------------- words that appear in several places
+
+common.cancel = "Cancel"
+common.save   = "Save"
+common.delete = "Delete"
+common.edit   = "Edit"
+common.rename = "Rename"
+
+common.no_database             = "No database is connected."
+common.choose_on_database_tab  = "Choose one on the Database tab."
+
+
+# ------------------------------------------------------------------- the Categories tab
+
+categories.title    = "Categories"
+categories.subtitle = "Total spent in each category so far in {year}"
+categories.total    = "Total"
+
+categories.column.name  = "Category"
+categories.column.spent = "Spent"
+
+categories.empty      = "No categories yet."
+categories.empty_hint = "Add one below to start putting spending into it."
+
+# Entries recorded while the computer was set to a different currency. They are
+# still in the database; they are simply not part of a total in this one.
+categories.foreign.one   = "{n} entry was recorded in another currency and not counted here."
+categories.foreign.other = "{n} entries were recorded in another currency and not counted here."
+
+categories.add         = "Add New Category"
+categories.add.title   = "Add New Category"
+categories.add.body    = "Spending is filed under categories; this adds another one."
+categories.add.confirm = "Add Category"
+categories.name_hint   = "e.g. Groceries"
+
+categories.rename.title = "Rename Category"
+categories.rename.body  = "Renaming “{name}”. Its spending stays with it."
+
+categories.delete.title = "Delete Category?"
+categories.delete.body  = "Delete “{name}”? This cannot be undone."
+
+categories.connect_first = "Connect a database on the Database tab first."
+
+# Checked before a category reaches the database, so both backends agree.
+category.needs_a_name  = "Give the category a name."
+category.name_too_long = "That name is too long — 64 characters at most."
+
+# Refused by the database rather than by the form, so all three backends say
+# the same thing in the same language.
+category.already_exists = "“{name}” is already a category."
+category.no_such        = "There is no category called “{name}”."
+category.has_entries    = "“{name}” still has spending entries — delete or move them first."
+
+
+# --------------------------------------------------------------------- the Spending tab
+
+spending.title    = "Spending"
+spending.subtitle = "Amounts in {code} ({symbol}); dates as {format}"
+
+spending.date              = "Date"
+spending.category          = "Category"
+spending.choose_category   = "Choose a category…"
+spending.no_categories_yet = "No categories yet"
+spending.amount            = "Amount ({symbol})"
+spending.description       = "Description (optional)"
+spending.description_hint  = "What was it for?"
+spending.record            = "Record Spending"
+
+spending.add_a_category_first = "Add a category first — spending has to go somewhere."
+spending.choose_a_category    = "Choose a category."
+spending.description_too_long = "That description is too long — 255 characters at most."
+
+
+# ---------------------------------------------------------------------- the Entries tab
+
+entries.title    = "Entries"
+entries.subtitle = "Everything recorded in {year}, oldest first"
+
+entries.column.date        = "Date"
+entries.column.category    = "Category"
+entries.column.amount      = "Amount"
+entries.column.description = "Description"
+
+entries.empty      = "No entries yet."
+entries.empty_hint = "Record some on the Spending tab and they will show up here."
+
+entries.edit.title = "Edit Entry"
+
+# How one entry is named in the sentence asking whether to delete it.
+entries.label        = "{amount} in {category} on {date}"
+entries.delete.title = "Delete Entry?"
+entries.delete.body  = "Delete {what}? This cannot be undone."
+
+entry.no_longer_exists = "That entry no longer exists."
+
+
+# ---------------------------------------------------------------------- the Reports tab
+
+reports.title    = "Reports"
+reports.subtitle = "Write a year's spending out as a file you can keep, send or print"
+
+reports.year        = "Year"
+reports.year_before = "The year before"
+reports.year_after  = "The year after"
+reports.this_year   = "This year"
+
+# The line above the format buttons: what the chosen year adds up to.
+reports.summary = "{total} across {entries} in {categories}"
+
+reports.format = "Format"
+
+reports.include         = "Include"
+reports.include.monthly = "A month-by-month table"
+reports.include.entries = "Every entry, itemised"
+
+reports.folder      = "Save in this folder, as {name}"
+reports.folder_hint = "path to a folder"
+reports.save        = "Save Report"
+
+reports.nothing_yet = "There is nothing recorded for this year yet — a report of it would be an empty one."
+
+reports.no_database       = "There is no database to report on."
+reports.say_which_folder  = "Say which folder to save into."
+reports.unreadable        = "Could not read the figures: {error}"
+reports.could_not_write   = "Could not write {path}: {error}"
+
+# The sentence under each of the four format buttons.
+format.csv.detail  = "Columns for a spreadsheet: Excel, Numbers, LibreOffice."
+format.docx.detail = "A Word document, with the tables laid out for reading."
+format.html.detail = "A page for the browser, and printable from there."
+format.json.detail = "The figures as data, for another program to read."
+
+
+# ------------------------------------------------------ inside a report, once written
+#
+# These are the words in the file the Reports tab produces, so they end up in a
+# spreadsheet, a Word document or a printed page rather than on screen. The JSON
+# report is not translated: its field names are read by another program, which
+# has no way to know which language wrote the file.
+
+report.name        = "Spending report"
+report.title       = "Spending report {year}"
+report.year        = "Year"
+report.generated   = "Generated"
+report.currency    = "Currency"
+report.total_spent = "Total spent:"
+
+report.meta = "Generated {date} · {code} · {entries} in {categories}"
+
+report.entry_count.one      = "{n} entry"
+report.entry_count.other    = "{n} entries"
+report.category_count.one   = "{n} category"
+report.category_count.other = "{n} categories"
+
+report.by_category = "By category"
+report.by_month    = "By month"
+
+report.column.category    = "Category"
+report.column.entries     = "Entries"
+report.column.total       = "Total"
+report.column.share       = "Share"
+report.column.month       = "Month"
+report.column.date        = "Date"
+report.column.amount      = "Amount"
+report.column.description = "Description"
+
+report.docx_failed = "Could not build the Word document: {error}"
+
+month.january   = "January"
+month.february  = "February"
+month.march     = "March"
+month.april     = "April"
+month.may       = "May"
+month.june      = "June"
+month.july      = "July"
+month.august    = "August"
+month.september = "September"
+month.october   = "October"
+month.november  = "November"
+month.december  = "December"
+
+
+# --------------------------------------------------------------------- the Database tab
+
+database.title    = "Database"
+database.subtitle = "Where this app keeps your categories and spending"
+
+database.sqlite.title  = "SQLite file (default)"
+database.sqlite.detail = "A single file on this machine. Nothing to set up."
+database.mariadb.title  = "MariaDB server"
+database.mariadb.detail = "A server you already run, so several machines can share the figures."
+database.mssql.title   = "SQL Server"
+database.mssql.detail  = "A Microsoft SQL Server instance, on this machine or another."
+
+database.file         = "Database file"
+database.file_hint    = "path to a .sqlite file"
+database.use_default  = "Use the default location"
+database.file_created = "The file is created if it is not there yet, along with any folders leading to it."
+
+database.host     = "Host"
+database.port     = "Port"
+database.name     = "Database"
+database.user     = "User name"
+database.password = "Password"
+
+database.use_tls           = "Connect over TLS"
+database.tls_skip_verify   = "Accept a certificate that does not match the host name"
+database.ca_cert           = "CA certificate file (optional)"
+database.ca_cert_hint      = "for a server certificate issued by your own authority"
+database.encrypt           = "Encrypt the connection"
+database.accept_any_certificate = "Accept any certificate this server offers"
+database.remember_password = "Remember the password (stored as plain text in the config file)"
+
+database.mariadb.privileges = "The tables are created on first connection, so the user needs "
+                              "CREATE as well as SELECT and INSERT."
+database.mssql.privileges   = "The tables are created on first connection, which needs CREATE "
+                              "TABLE, REFERENCES, SELECT and INSERT — simplest is to make the "
+                              "login db_owner of this database."
+
+database.test       = "Test Connection"
+database.use_this   = "Use This Database"
+database.connecting = "Connecting…"
+
+database.settings_kept_in = "Settings are kept in {path}"
+
+database.create.title   = "Create a New Database?"
+database.create.body    = "There is no file at {path}. Starting a new, empty database there is "
+                          "fine if that is what you meant — but if you were opening one you "
+                          "already have, check the path for a typo first: your existing "
+                          "spending is wherever that file really is, untouched."
+database.create.confirm = "Create It"
+
+database.bad_port                  = "The port has to be a number between 1 and 65535."
+database.needs_host                = "Enter the server's host name."
+database.needs_name                = "Enter the database name."
+database.needs_user                = "Enter the user name."
+database.file_needs_a_path         = "Give the database file a path."
+database.could_not_open            = "Could not open {path}: {error}"
+database.could_not_create_folder   = "Could not create {path}: {error}"
+# A date column holding something that is not a date, which nothing this app
+# wrote could have put there.
+database.bad_stored_date           = "A stored date is not a date: {date}"
+database.connected_but_unreadable  = "Connected, but could not read from it: {error}"
+database.could_not_start           = "Could not start the connection: {error}"
+database.attempt_stopped           = "The connection attempt stopped unexpectedly."
+database.timed_out                 = "Timed out connecting to the server."
+
+
+# --------------------------------------------------------------------- the Settings tab
+
+settings.title    = "Settings"
+settings.subtitle = "What language this app speaks, and what colour it is"
+
+settings.language        = "Language"
+settings.language.system = "Follow this computer"
+settings.language.help   = "Languages are plain text files. Copy one, translate it, and put it in "
+                           "the folder below — anything you have not translated falls back to "
+                           "English, so it works from the first line."
+settings.language.folder      = "Language files go in {path}"
+settings.language.open_folder = "Open the Folder"
+settings.language.reload      = "Re-read the Files"
+
+settings.language.problem_count.one   = "{n} line of this language file could not be read:"
+settings.language.problem_count.other = "{n} lines of this language file could not be read:"
+settings.language.problem             = "Line {line}: {what}"
+
+settings.appearance = "Appearance"
+
+appearance.system.label       = "Follow this computer"
+appearance.system.description = "Light or dark, whichever this computer is set to."
+appearance.light.label        = "Light"
+appearance.light.description  = "Always the light window, whatever the rest of the desktop does."
+appearance.dark.label         = "Dark"
+appearance.dark.description   = "Always the dark window, whatever the rest of the desktop does."
+
+settings.updates                 = "Updates"
+settings.check_for_updates       = "Check for new versions at startup"
+settings.check_for_updates.hint  = "One small request to GitHub. Nothing is downloaded or installed."
+
+settings.could_not_save = "That could not be saved: {error}"
+
+
+# ------------------------------------------------------------ the newer-version box
+
+update.title              = "There is a newer version"
+update.body               = "You are running {current}. Version {version} has been released."
+update.nothing_downloaded = "Nothing has been downloaded. The release page has the notes and "
+                            "the files for each platform."
+update.dismiss            = "Dismiss"
+update.dismiss_hint       = "You will not be told about this version again"
+update.open_page          = "Open the Release Page"
+
+
+# --------------------------------------------------- what the app says along the bottom
+
+status.no_database   = "No database"
+status.connecting    = "Connecting to {target}…"
+
+status.category_added   = "Added the category “{name}”."
+status.category_renamed = "Renamed “{old}” to “{new}”."
+status.category_deleted = "Deleted the category “{name}”."
+
+status.recorded             = "Recorded {amount} in {category}."
+status.recorded_other_year  = "Recorded {amount} in {category}, dated {year}."
+status.entry_saved          = "Saved the change."
+status.entry_deleted        = "Deleted the entry."
+
+status.report_saved = "Saved {format} to {path}"
+
+status.connection_tested     = "{target} — connected, and readable."
+status.connection_failed     = "{target} — {reason}"
+status.now_using             = "Now using {target}"
+status.connected_but_unsaved = "Connected, but could not save the setting: {error}"
+status.categories_unreadable = "Could not read the categories: {error}"
+
+status.language_changed   = "The app is now in {name}."
+status.language_reloaded  = "Language files re-read; still in {name}."
+status.appearance_changed = "Appearance: {name}."
+
+
+# ----------------------------------------------- what is wrong with what was typed
+#
+# The separators and the shape of a date come from the region the computer is
+# set to, and arrive here as {separator} and {format} already written the way
+# that region writes them.
+
+amount.enter              = "Enter an amount."
+amount.not_an_amount      = "That is not an amount. Use digits, with {separator} for the decimal point."
+amount.no_decimals        = "{code} amounts have no decimal places."
+amount.too_many_decimals.one   = "Use at most {n} decimal place."
+amount.too_many_decimals.other = "Use at most {n} decimal places."
+amount.too_large          = "That amount is too large."
+amount.greater_than_zero  = "Enter an amount greater than zero."
+
+date.enter_as     = "Enter the date as {format}."
+date.bad_year     = "That year looks wrong. Enter the date as {format}."
+date.no_such_date = "There is no such date. Enter it as {format}."

@@ -83,7 +83,31 @@ fn language(app: &mut App, ui: &mut Ui) -> bool {
         edited = true;
     }
 
-    // Whatever the current file could not be read as, said plainly: a
+    // Files in the folder that never became a language at all, first — a
+    // translator whose file is simply not in the picker above has no other way
+    // to find out why, and this is the failure that costs them the most time.
+    let files = i18n::folder_problems();
+    if !files.is_empty() {
+        ui.add_space(4.0);
+        ui::error_text(ui, &tn!("settings.language.file_count", files.len() as u64));
+        for file in &files {
+            let name = crate::config::tilde(&file.path);
+            ui::error_text(
+                ui,
+                &match file.reason {
+                    i18n::FileReason::Unreadable => {
+                        t!("settings.language.file_unreadable", path = name)
+                    }
+                    i18n::FileReason::NoCode => t!("settings.language.file_no_code", path = name),
+                    i18n::FileReason::WouldReplaceEnglish => {
+                        t!("settings.language.file_is_english", path = name)
+                    }
+                },
+            );
+        }
+    }
+
+    // Then whatever the current file could not be read as, said plainly: a
     // translator's first draft always has a stray quote in it somewhere, and
     // hunting for it without a line number is miserable.
     let problems = i18n::current_problems();

@@ -42,30 +42,72 @@ const EMBEDDED: &[&str] = &[
 /// The saved value meaning "whatever language this computer is set to".
 pub const AUTO: &str = "auto";
 
+/// Why a file in the languages folder could not be used at all.
+///
+/// Distinct from [`catalogue::Problem`], which is a *line* the parser could not
+/// read inside a file that was otherwise loaded. These are whole files that
+/// never became a language, and they matter more: a bad line costs one string,
+/// whereas one of these is a translator's afternoon disappearing without a
+/// word. They used to be reported only through `log`, which this app installs
+/// no implementation for, so in practice they were reported nowhere.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileReason {
+    /// There, but unreadable — permissions, most likely.
+    Unreadable,
+    /// No `code` line, so there is no way to tell what language it is.
+    NoCode,
+    /// `code = "en"`. English is the fallback every other language is measured
+    /// against, so an incomplete file replacing it would leave keys with
+    /// nothing behind them at all.
+    WouldReplaceEnglish,
+}
+
+/// A file in the languages folder that could not be used, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileProblem {
+    pub path: PathBuf,
+    pub reason: FileReason,
+}
+
 /// The language files that are loaded, and which one is in use.
 struct Registry {
     /// Index 0 is always English.
     catalogues: Vec<Catalogue>,
     current: usize,
+    /// Files in the folder that never became a language. Kept so the Settings
+    /// pane can say so rather than leaving a translator staring at a picker
+    /// their file is not in.
+    folder_problems: Vec<FileProblem>,
 }
 
 impl Registry {
     fn load() -> Self {
+        Self::assemble(folder_catalogues())
+    }
+
+    /// The built-in languages with the folder's laid over them, split from
+    /// [`Registry::load`] so a test can hand it a folder of its own — the real
+    /// one is inside the user's data directory, which is not somewhere a test
+    /// should be writing.
+    fn assemble(
+        (extras, mut folder_problems): (Vec<(PathBuf, Catalogue)>, Vec<FileProblem>),
+    ) -> Self {
         let mut catalogues: Vec<Catalogue> =
             EMBEDDED.iter().map(|text| Catalogue::parse(text)).collect();
 
         // A file in the user's folder replaces the built-in language of the
         // same code. That is what lets a translator improve a shipped
         // translation, not only add a new one.
-        for extra in folder_catalogues() {
+        for (path, extra) in extras {
             match catalogues
                 .iter()
                 .position(|existing| same_code(&existing.code, &extra.code))
             {
-                // Never index 0: English is the fallback everything else is
-                // measured against, and an incomplete file replacing it would
-                // leave keys with nothing behind them at all.
-                Some(0) => continue,
+                // Never index 0 — see [`FileReason::WouldReplaceEnglish`].
+                Some(0) => folder_problems.push(FileProblem {
+                    path,
+                    reason: FileReason::WouldReplaceEnglish,
+                }),
                 Some(index) => catalogues[index] = extra,
                 None => catalogues.push(extra),
             }
@@ -74,6 +116,7 @@ impl Registry {
         Self {
             catalogues,
             current: 0,
+            folder_problems,
         }
     }
 
@@ -95,42 +138,53 @@ pub fn languages_dir() -> PathBuf {
     crate::config::data_dir().join("languages")
 }
 
-/// Reads every `.toml` in the languages folder. A folder that is missing is the
-/// normal case, not an error.
-fn folder_catalogues() -> Vec<Catalogue> {
-    let dir = languages_dir();
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Vec::new();
+/// Reads every `.toml` in the languages folder, with whatever could not be
+/// used. A folder that is missing is the normal case, not an error.
+///
+/// Each catalogue comes back paired with the file it came from, so a problem
+/// found later — a file whose code turns out to be English's — can still name
+/// the file it is about.
+fn folder_catalogues() -> (Vec<(PathBuf, Catalogue)>, Vec<FileProblem>) {
+    read_folder(&languages_dir())
+}
+
+/// The part of the above that does the work, taking the folder as an argument
+/// so a test can hand it one — the real folder is inside the user's own data
+/// directory, which is not somewhere a test should be writing.
+fn read_folder(dir: &std::path::Path) -> (Vec<(PathBuf, Catalogue)>, Vec<FileProblem>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return (Vec::new(), Vec::new());
     };
 
-    let mut found = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().is_none_or(|ext| ext != "toml") {
-            continue;
-        }
+    let (mut found, mut problems) = (Vec::new(), Vec::new());
+    // Read in a fixed order, so the picker and the problem list do not shuffle
+    // between runs on a filesystem that does not sort its directory entries.
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
+        .collect();
+    paths.sort();
+
+    for path in paths {
         let Ok(text) = std::fs::read_to_string(&path) else {
-            log::warn!("language file could not be read: {}", path.display());
+            problems.push(FileProblem {
+                path,
+                reason: FileReason::Unreadable,
+            });
             continue;
         };
         let catalogue = Catalogue::parse(&text);
         if catalogue.code.trim().is_empty() {
-            log::warn!(
-                "language file has no `code` line, ignored: {}",
-                path.display()
-            );
+            problems.push(FileProblem {
+                path,
+                reason: FileReason::NoCode,
+            });
             continue;
         }
-        log::info!(
-            "language file loaded: {} ({}, {} entries, {} problems)",
-            path.display(),
-            catalogue.code,
-            catalogue.keys().count(),
-            catalogue.problems.len()
-        );
-        found.push(catalogue);
+        found.push((path, catalogue));
     }
-    found
+    (found, problems)
 }
 
 /// Two language codes naming the same language, give or take punctuation and
@@ -188,6 +242,16 @@ pub fn current_name() -> String {
         .into_iter()
         .find(|(candidate, _)| *candidate == code)
         .map_or(code, |(_, name)| name)
+}
+
+/// The files in the languages folder that never became a language, for the
+/// Settings pane to show. Always empty until somebody puts a file there.
+pub fn folder_problems() -> Vec<FileProblem> {
+    REGISTRY
+        .read()
+        .expect("language registry")
+        .folder_problems
+        .clone()
 }
 
 /// Whatever is wrong with the language file in use, for the Settings pane to
@@ -444,6 +508,64 @@ mod tests {
             // And an unknown language lands on English rather than on nothing.
             assert_eq!(set_language("xx"), "en");
         });
+    }
+
+    /// The three ways a file in the languages folder can fail to become a
+    /// language, each of which used to vanish into a `log` call this app has no
+    /// implementation for — leaving a translator staring at a picker their file
+    /// was not in, with nothing anywhere saying why.
+    #[test]
+    fn a_file_that_cannot_be_used_says_which_and_why() {
+        use std::hash::{BuildHasher as _, RandomState};
+
+        let dir = std::env::temp_dir().join(format!(
+            "gas-lang-test-{:016x}",
+            RandomState::new().hash_one(std::process::id())
+        ));
+        std::fs::create_dir_all(&dir).expect("a temp folder");
+
+        std::fs::write(
+            dir.join("good.toml"),
+            "code = \"nl\"\nname = \"Nederlands\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("nameless.toml"), "name = \"Mystery\"\n").unwrap();
+        std::fs::write(
+            dir.join("english.toml"),
+            "code = \"EN\"\nname = \"English\"\n",
+        )
+        .unwrap();
+        // Not a language file at all, and not anybody's mistake either.
+        std::fs::write(dir.join("notes.txt"), "ignore me").unwrap();
+
+        // Assembled rather than merely read, because the English collision is
+        // only detectable once a file is matched against the loaded languages.
+        let registry = Registry::assemble(read_folder(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Dutch joined the two built-in languages; nothing else did.
+        let codes: Vec<&str> = registry
+            .catalogues
+            .iter()
+            .map(|c| c.code.as_str())
+            .collect();
+        assert_eq!(codes, ["en", "fr", "nl"]);
+
+        let mut said: Vec<(&str, &FileReason)> = registry
+            .folder_problems
+            .iter()
+            .map(|p| (p.path.file_name().unwrap().to_str().unwrap(), &p.reason))
+            .collect();
+        said.sort_by_key(|(name, _)| *name);
+        assert_eq!(
+            said,
+            [
+                // Capitalised `EN` still counts as English, since codes are
+                // matched case-insensitively.
+                ("english.toml", &FileReason::WouldReplaceEnglish),
+                ("nameless.toml", &FileReason::NoCode),
+            ]
+        );
     }
 
     #[test]

@@ -5,6 +5,8 @@ Notable changes to this project, newest first. Versions follow
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-19
+
 ### Added
 
 - **The app speaks more than one language.** Everything the interface says now
@@ -31,6 +33,11 @@ Notable changes to this project, newest first. Versions follow
 - A **Settings** tab, holding the two above and the startup update check. That
   checkbox was previously reachable only from inside the box offering an
   update, which is a place you cannot get back to once you have dismissed it.
+- Settings now names any file in the languages folder that could not be used at
+  all — unreadable, missing its `code` line, or claiming to be English, which
+  is the one language a file may not replace — and says which and why. Those
+  files were previously dropped in silence, leaving a translator looking at a
+  picker their file was not in with nothing anywhere explaining it.
 
 ### Changed
 
@@ -180,7 +187,8 @@ Initial release.
   Windows for every push; a `v*` tag publishes a GitHub Release with a
   binary for each platform plus a `SHA256SUMS`.
 
-[Unreleased]: https://github.com/mediaswing/watchspend/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/mediaswing/watchspend/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/mediaswing/watchspend/compare/v1.3.0...v1.5.0
 [1.3.0]: https://github.com/mediaswing/watchspend/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/mediaswing/watchspend/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/mediaswing/watchspend/compare/v1.0.0...v1.1.0

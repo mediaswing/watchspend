@@ -281,6 +281,7 @@ impl Catalogue {
         self.entries.contains_key(key)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(String::as_str)
     }

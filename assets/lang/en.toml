@@ -308,6 +308,16 @@ settings.language.folder      = "Language files go in {path}"
 settings.language.open_folder = "Open the Folder"
 settings.language.reload      = "Re-read the Files"
 
+# Whole files in the languages folder that never became a language, as opposed
+# to the single lines below.
+settings.language.file_count.one   = "{n} file in the languages folder could not be used:"
+settings.language.file_count.other = "{n} files in the languages folder could not be used:"
+settings.language.file_unreadable  = "{path} could not be read."
+settings.language.file_no_code     = "{path} has no `code` line, so there is no telling what language it is."
+settings.language.file_is_english  = "{path} has `code = \"en\"`. English is the fallback every other "
+                                     "language falls back to, so it cannot be replaced — give the file "
+                                     "its own code."
+
 settings.language.problem_count.one   = "{n} line of this language file could not be read:"
 settings.language.problem_count.other = "{n} lines of this language file could not be read:"
 settings.language.problem             = "Line {line}: {what}"
